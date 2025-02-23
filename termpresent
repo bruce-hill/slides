@@ -31,10 +31,16 @@ class Line(str):
     def draw(self, bt:btui.BTUI, x:int, y:int, max_width:int):
         s = str(self)
         header_space = " "*((max_width-render_width(s)+1)//2)
-        s = re.sub(r'^# *(.*)', "\033[7m " + header_space + "\\1" + header_space +" \033[27m", s)
+        # Headers
+        s = re.sub(r'^# *(.*)', "\033[1;7m " + header_space + "\\1" + header_space +" \033[22;27m", s)
+        # Bold
         s = re.sub(r'\*([^*]*)\*', "\033[1m\\1\033[22m", s)
+        # Underline
         s = re.sub(r'\b_([^_]*)_\b', "\033[4m\\1\033[24m", s)
+        # Italics
         s = re.sub(r'/([^/]*)/', "\033[3m\\1\033[23m", s)
+        # Inline code
+        s = re.sub(r'`([^`]*)`', "\033[1;32;48;2;40;50;40m\\1\033[22;39;49m", s)
         bt.move(x, y)
         bt.write(s)
 
