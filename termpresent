@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+#
+# This file contains a simple test program for demonstrating some basic Python
+# BTUI usage.
+#
+import btui
+import subprocess
+import re
+
+from pygments import highlight
+from pygments.lexers import get_lexer_by_name
+from pygments.formatters import Terminal256Formatter
+from pygments.util import ClassNotFound
+
+FORMATTER = Terminal256Formatter(style="monokai")
+
+
+def render_width(text:str)->int:
+    text = re.sub("\033\\[[\\d;]*.", "", text)
+    return len(text)
+
+class Line(str):
+    @property
+    def min_width(self)->int:
+        return render_width(self)
+    
+    @property
+    def height(self)->int:
+        return 1
+
+    def draw(self, bt:btui.BTUI, x:int, y:int, max_width:int):
+        s = str(self)
+        header_space = " "*((max_width-render_width(s)+1)//2)
+        s = re.sub(r'^# *(.*)', "\033[7m " + header_space + "\\1" + header_space +" \033[27m", s)
+        s = re.sub(r'\*([^*]*)\*', "\033[1m\\1\033[22m", s)
+        s = re.sub(r'\b_([^_]*)_\b', "\033[4m\\1\033[24m", s)
+        s = re.sub(r'/([^/]*)/', "\033[3m\\1\033[23m", s)
+        bt.move(x, y)
+        bt.write(s)
+
+class Code:
+    def __init__(self, title, lines):
+        self.title = title
+        try:
+            lexer = get_lexer_by_name(title.lower(), stripall=True)
+        except ClassNotFound:
+            pass
+        else:
+            code = "\n".join(lines)
+            lines = highlight(code, lexer, FORMATTER).splitlines()
+        self.lines = lines
+
+    @property
+    def min_width(self)->int:
+        num_width = len(str(len(self.lines)))
+        return 3 + num_width + 1 + max(len(self.title)+2, max(render_width(line) for line in self.lines))
+    
+    @property
+    def height(self)->int:
+        return 2 + len(self.lines)
+
+    def draw(self, bt:btui.BTUI, x:int, y:int, max_width:int):
+        with bt.attributes("fg_blue"):
+            bt.outline_box(x+1,y+1,max_width-2,len(self.lines))
+            if self.title:
+                bt.move(x+(max_width-len(self.title)-2)//2,y)
+                bt.write(" "+self.title+" ")
+
+        num_width = len(str(len(self.lines)))
+        for i,line in enumerate(self.lines):
+            bt.move(x+1,y+1+i)
+            with bt.attributes("dim"):
+                bt.write(str(i+1).rjust(num_width) + "\033(0x\033(B ")
+            bt.write(line)
+
+class Command:
+    def __init__(self, cmd):
+        self.cmd = cmd
+        self.output = subprocess.check_output(["script", "-qc", cmd]).decode("utf-8").rstrip("\n").splitlines()
+
+    @property
+    def min_width(self)->int:
+        return 4 + max(render_width(self.cmd), max(render_width(line) for line in self.output))
+
+    @property
+    def height(self)->int:
+        return 3 + len(self.output)
+
+    def draw(self, bt:btui.BTUI, x:int, y:int, max_width:int):
+        with bt.attributes("fg_yellow"):
+            bt.outline_box(x+1,y+1,max_width-2, 1 + len(self.output))
+
+        bt.move(x+2,y+1)
+        with bt.attributes("bold"):
+            with bt.attributes("fg_yellow"):
+                bt.write("$ ")
+            bt.write(self.cmd)
+        for i,line in enumerate(self.output):
+            bt.move(x+2,y+2+i)
+            bt.write(line)
+
+def show_slide(bt:btui.BTUI, slide:[str]):
+    with bt.buffered():
+        bt.clear()
+        chunks = []
+        slide_lines = iter(slide)
+        for line in slide_lines:
+            if line.startswith("$"):
+                chunks.append(Command(line[1:].strip()))
+            elif line.startswith("```"):
+                code_lines = []
+                for code_line in slide_lines:
+                    if code_line.startswith("```"):
+                        break
+                    code_lines.append(code_line)
+                chunks.append(Code(line[3:], code_lines))
+            else:
+                chunks.append(Line(line))
+
+        max_width = max(chunk.min_width for chunk in chunks)
+        x = (bt.width - max_width)//2
+        if x < 0: x = 0
+        y = (bt.height - sum(chunk.height for chunk in chunks))//2
+        if y < 0: y = 0
+        for chunk in chunks:
+            chunk.draw(bt, x, y, max_width)
+            y += chunk.height
+
+def present(script:str):
+    slides = [[]]
+    for line in script.splitlines():
+        if line.startswith("---"):
+            slides.append([])
+        else:
+            slides[-1].append(line)
+
+    prev_index = None
+    index = 0
+    with btui.open() as bt:
+        key = None
+        x, y = 1, 1
+        while key != 'q' and key != 'Ctrl-c':
+            if index != prev_index:
+                show_slide(bt, slides[index])
+                prev_index = index
+
+            key, mx, my = bt.getkey()
+            if mx:
+                x, y = mx, my
+
+            if key == 'Left':
+                index = max(0, index - 1)
+            elif key == 'Right' or key == 'Space':
+                index = min(len(slides)-1, index + 1)
+            elif key == 'r':
+                show_slide(bt, slides[index])
+            elif key == 'Home':
+                index = 0
+            elif key == 'End':
+                index = len(slides)-1
+            elif key == 'Ctrl-z':
+                bt.suspend()
+
+if __name__ == "__main__":
+    import sys
+    for filename in sys.argv[1:]:
+        try:
+            with open(filename) as f:
+                present(f.read())
+        except FileNotFoundError:
+            print(f"File not found: {filename}")
