@@ -63,7 +63,7 @@ class Code:
         with bt.attributes("fg_blue"):
             bt.outline_box(x+1,y+1,max_width-2,len(self.lines))
             if self.title:
-                bt.move(x+(max_width-len(self.title)-2)//2,y)
+                bt.move(x+(max_width-(len(self.title)+2))//2,y)
                 bt.write(" "+self.title+" ")
 
         num_width = len(str(len(self.lines)))
@@ -76,7 +76,7 @@ class Code:
 class Command:
     def __init__(self, cmd):
         self.cmd = cmd
-        self.output = subprocess.check_output(["script", "-qc", cmd]).decode("utf-8").rstrip("\n").splitlines()
+        self.output = subprocess.check_output(["script", "-qc", cmd], stdin=open("/dev/null", "r")).decode("utf-8").rstrip("\n").splitlines()
 
     @property
     def min_width(self)->int:
