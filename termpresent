@@ -6,7 +6,10 @@
 import btui
 import subprocess
 import re
+import marko
 
+from marko.helpers import MarkoExtension
+from marko.inline import *
 from pygments import highlight
 from pygments.lexers import get_lexer_by_name
 from pygments.formatters import Terminal256Formatter
@@ -19,30 +22,64 @@ def render_width(text:str)->int:
     text = re.sub("\033\\[[\\d;]*.", "", text)
     return len(text)
 
-class Line(str):
+class TerminalRenderer(marko.Renderer):
+    def render_document(self, element):
+        return self.render_children(element)
+
+    def render_heading(self, element):
+        return f"\033[1;7m {self.render_children(element)} \033[22;27m"
+
+    def render_children(self, element):
+        if isinstance(element, str):
+            return element  # Avoid treating it as an object
+        return super().render_children(element)
+
+    def render_list(self, element) -> str:
+        lines = []
+        if element.ordered:
+            for num, child in enumerate(element.children, element.start):
+                lines.append(f"\033[1m{num}.\033[m {self.render(child)}")
+        else:
+            for child in element.children:
+                lines.append(f"\033[1m\033(0`\033(B\033[m {self.render(child)}\n")
+        return "".join(lines)
+
+    def render_link(self, element) -> str:
+        return f"\033[34;4m{self.render_children(element)}\033[0m"
+
+    def render_emphasis(self, element) -> str:
+        return f"\033[3m{self.render_children(element)}\033[23m"
+
+    def render_strong_emphasis(self, element) -> str:
+        return f"\033[1m{self.render_children(element)}\033[22m"
+
+    def render_code_span(self, element) -> str:
+        return f"\033[1;32;48;2;40;50;40m{element.children}\033[22;39;49m"
+
+    def render_quote(self, element) -> str:
+        return f"\033[34;3m{self.render_children(element)}\033[39;23m"
+
+markdown = marko.Markdown(renderer=TerminalRenderer)
+def render_markdown(md_text: str) -> str:
+    ast = markdown.parse(md_text)
+    return markdown.render(ast)
+
+class Line:
+    def __init__(self, raw):
+        self.rendered = render_markdown(raw)
+        self.raw = raw
+
     @property
     def min_width(self)->int:
-        return render_width(self)
+        return render_width(self.rendered)
     
     @property
     def height(self)->int:
         return 1
 
     def draw(self, bt:btui.BTUI, x:int, y:int, max_width:int):
-        s = str(self)
-        header_space = " "*((max_width-render_width(s)+1)//2)
-        # Headers
-        s = re.sub(r'^# *(.*)', "\033[1;7m " + header_space + "\\1" + header_space +" \033[22;27m", s)
-        # Bold
-        s = re.sub(r'\*([^*]*)\*', "\033[1m\\1\033[22m", s)
-        # Underline
-        s = re.sub(r'\b_([^_]*)_\b', "\033[4m\\1\033[24m", s)
-        # Italics
-        s = re.sub(r'/([^/]*)/', "\033[3m\\1\033[23m", s)
-        # Inline code
-        s = re.sub(r'`([^`]*)`', "\033[1;32;48;2;40;50;40m\\1\033[22;39;49m", s)
         bt.move(x, y)
-        bt.write(s)
+        bt.write(self.rendered)
 
 class Code:
     def __init__(self, title, lines):
