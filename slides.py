@@ -51,13 +51,13 @@ class TerminalRenderer(marko.Renderer):
     def render_document(self, element):
         return self.render_children(element)
 
-    def render_heading(self, element):
-        return f"\033[1;7m{self.render_children(element):^{TerminalRenderer.width}}\033[22;27m\n\n"
-
     def render_children(self, element):
         if isinstance(element, str):
             return element  # Avoid treating it as an object
         return super().render_children(element)
+
+    def render_heading(self, element):
+        return f"\033[1;7m{self.render_children(element):^{TerminalRenderer.width}}\033[22;27m\n\n"
 
     def render_list(self, element) -> str:
         lines = []
@@ -111,6 +111,12 @@ class TerminalRenderer(marko.Renderer):
             code = highlight(raw_code, lexer, FORMATTER)
             output = subprocess.check_output(["script", "-qc", raw_code.strip(), "/dev/null"], stdin=open("/dev/null", "r")).decode("utf-8").rstrip("\n")
             return boxed("\033[33;1m$\033[m " + code + "\n" + output, line_numbers=False, box_color="\033[33m", min_width=TerminalRenderer.width) + "\n\n"
+        elif element.lang == "demo":
+            lexer = get_lexer_by_name("bash", stripall=True)
+            code = highlight(raw_code, lexer, FORMATTER)
+            title = "Demo (press Enter to run)"
+            heading = f"\033[1;32;7m{title:^{TerminalRenderer.width}}\033[22;27m"
+            return heading + "\n" + boxed("\033[33;1m$\033[m " + code, line_numbers=False, box_color="\033[32m", min_width=TerminalRenderer.width) + "\n\n"
 
         code = raw_code
         assert(isinstance(code, str))
@@ -131,6 +137,22 @@ class TerminalRenderer(marko.Renderer):
 
     def render_paragraph(self, element) -> str:
         return f"{self.render_children(element).strip()}\n\n"
+
+def run_demos(ast):
+    if isinstance(ast, (marko.block.CodeBlock, marko.block.FencedCode)):
+        if ast.lang == "demo":
+            raw_code = ast.children[0].children
+            result = subprocess.run(["bash", "-c", raw_code.strip()])
+    elif isinstance(ast, marko.element.Element):
+        if hasattr(ast, "children"):
+            for child in ast.children:
+                run_demos(child)
+        else:
+            raise ValueError(f"No children! {ast}")
+    elif isinstance(ast, str):
+        return
+    else:
+        raise ValueError(f"Not an element! {ast}")
 
 markdown = marko.Markdown(renderer=TerminalRenderer)
 def render_markdown(md_text: str) -> str:
@@ -219,6 +241,14 @@ def present(slides:[str]):
                 index = len(slides)-1
             elif key == 'Ctrl-z':
                 bt.suspend()
+                redraw = True
+            elif key == 'Enter':
+                with bt.disabled():
+                    bt.flush()
+                    ast = markdown.parse(slides[index])
+                    run_demos(ast)
+                    input("\033[2mPress enter to continue...\033[m")
+
                 redraw = True
             elif key == '`':
                 raw = not raw
