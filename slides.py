@@ -34,7 +34,7 @@ def boxed(text:str, line_numbers=False, box_color="", min_width=0):
         if line_numbers:
             num_w = len(str(len(lines)))
             pad -= num_w+1
-            rendered.append(f"{box_color}\033(0x\033(B\033[0;2m{i+1:>{num_w}}\033(0x\033(B\033[m {line}{' '*pad} {box_color}\033(0x\033(B\033[m")
+            rendered.append(f"{box_color}\033(0x\033(B\033[0;2m{box_color}{i+1:>{num_w}}\033(0x\033(B\033[m {line}{' '*pad} {box_color}\033(0x\033(B\033[m")
         else:
             rendered.append(f"{box_color}\033(0x\033(B\033[m {line}{' '*pad} {box_color}\033(0x\033(B\033[m")
     rendered.append(box_color + "\033(0m" + "q"*(width-2) + "j\033(B" + "\033[m")
