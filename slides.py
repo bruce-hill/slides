@@ -74,7 +74,7 @@ class TerminalRenderer(marko.Renderer):
                 lines.append(f"\033[1m\033(0`\033(B\033[m {self.render(child).rstrip()}\n")
         return "".join(lines) + "\n"
 
-    def render_link(self, element) -> str:
+    def render_image(self, element) -> str:
         try:
             with open(element.dest) as f:
                 contents = f.read()
@@ -92,6 +92,10 @@ class TerminalRenderer(marko.Renderer):
         title = self.render_children(element) or element.dest
         heading = f"\033[1;36;7m{title:^{TerminalRenderer.width}}\033[22;27m"
         return "\n" + heading + "\n" + boxed(code, line_numbers=True, box_color="\033[36m", min_width=TerminalRenderer.width) + "\n\n"
+
+    def render_link(self, element) -> str:
+        title = self.render_children(element) or element.dest
+        return f"\033[1;4;34m{title}\033[m"
 
     def render_emphasis(self, element) -> str:
         return f"\033[3m{self.render_children(element)}\033[23m"
@@ -148,6 +152,8 @@ def run_demos(ast):
         if ast.lang == "demo":
             raw_code = ast.children[0].children
             result = subprocess.run(["bash", "-c", raw_code.strip()])
+    elif isinstance(ast, marko.inline.Link):
+        result = subprocess.run(["firefox", "--new-window", ast.dest])
     elif isinstance(ast, marko.element.Element):
         if hasattr(ast, "children"):
             for child in ast.children:

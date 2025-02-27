@@ -85,13 +85,13 @@ terminal renders emojis and what font you use)
 
 # Embedding files
 
-You can embed files with the syntax `[title](./file.txt)`:
+You can embed files with the syntax `![title](./file.txt)`:
 
 You can scroll up/down with **Up**/**Down**, the **mouse wheel**, or **Ctrl-U**/**Ctrl-D**.
 
-[Tale of Genji](genji.txt)
+![Tale of Genji](genji.txt)
 
-[The source for this presentation](sample.md)
+![The source for this presentation](sample.md)
 
 ---------------------------------------------------------
 
@@ -125,6 +125,14 @@ the **Backtick** key `` ` ``
 ```run
 hexdump -n 128 /dev/urandom
 ```
+
+---------------------------------------------------------
+
+# Get the Code
+
+You can get the source code [at the github repo](https://github.com/bruce-hill/slides)
+
+(links are `[link text](url)`, press **Enter** to launch)
 
 ---------------------------------------------------------
 
