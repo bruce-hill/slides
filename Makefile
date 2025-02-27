@@ -1,12 +1,14 @@
 PREFIX=${HOME}/.local
 
-all: slides
+all: dist/slides/slides
 
-slides: btui/Python/libbtui.so slides.py
-	pyinstaller --onefile --add-binary btui/Python/libbtui.so:. --distpath . slides.py
+dist/slides/slides: btui/Python/libbtui.so slides.py
+	pyinstaller -y --onedir --add-binary btui/Python/libbtui.so:. slides.py
 
 btui/Python/libbtui.so:
 	make -C btui python
 
-install: slides
-	sudo install -p slides $(PREFIX)/bin/
+install: dist/slides/slides
+	install -d $(PREFIX)/share/slides/
+	cp -r dist/slides/* $(PREFIX)/share/slides/
+	ln -sf $(PREFIX)/share/slides/slides ~/.local/bin/slides
