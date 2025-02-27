@@ -1,0 +1,114 @@
+# termpres Demo
+
+*by Bruce Hill*
+
+**termpres** is a terminal slide presenter.
+
+You can see the slide number in the bottom left corner.
+
+To advance to the next slide, press **Right** or **Space** or **J**.
+
+---------------------------------------------------------
+
+# Slide Navigation
+
+You can go back a slide by pressing **Left** or **Backspace** or **K**.
+
+You can go to the *first* slide by pressing **Home** or **H**.
+
+You can go to the *last* slide by pressing **End** or **L**.
+
+You can also type in a slide number and hit **Enter** to go to that slide.
+
+---------------------------------------------------------
+
+# Basic Features
+
+This is **italic**, *bold*, `inline code` and [a link](https://bruce-hill.com).
+The paragraph continues on line two.
+
+- A list
+- With items
+
+1. and
+2. some
+3. numbered ones
+
+> Block quote
+> that spans multiple lines
+
+Here's a shell example:
+
+```run
+ls --color=auto
+```
+
+```
+plain text
+```
+
+---------------------------------------------------------
+
+# Syntax Highlighting
+
+Some code:
+
+```Python
+def sing_bottles(n:int):
+    for i in reversed(range(n)):
+        if i > 1:
+            print(f"{i} bottles of beer on the wall,")
+            print(f"{i} bottles of beer!")
+            print("Take one down, pass it around...")
+        elif i == 1:
+            print("One bottle of beer on the wall,")
+            print("One bottle of beer!")
+            print("Take it down, pass it around...")
+        else:
+            print("No more bottles of beer on the wall!")
+            print("Go to the store, buy some more...")
+            sing_bottles(n)
+```
+
+```markdown
+This is some *markdown* text with **asterisks**.
+```
+
+---------------------------------------------------------
+
+# Re-running Code
+
+You can re-run code by pressing **Ctrl-R** or **R**.
+
+It is currently:
+
+```run
+date
+```
+
+Some random numbers:
+
+```run
+openssl rand -hex 16
+```
+
+```run
+hexdump -n 128 /dev/urandom
+```
+
+---------------------------------------------------------
+
+# Inspecting the Source
+
+You can inspect a slide's code at any point using
+the **Backtick** key `` ` ``
+
+```run
+hexdump -n 128 /dev/urandom
+```
+
+---------------------------------------------------------
+
+# The End
+
+Thanks for your time!
