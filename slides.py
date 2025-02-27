@@ -252,7 +252,6 @@ def present(slides:[str]):
                     bt.flush()
                     ast = markdown.parse(slides[index])
                     run_demos(ast)
-                    input("\033[2mPress enter to continue...\033[m")
 
                 redraw = True
             elif key == '`':
