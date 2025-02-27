@@ -95,6 +95,14 @@ You can scroll up/down with **Up**/**Down**, the **mouse wheel**, or **Ctrl-U**/
 
 ---------------------------------------------------------
 
+# Images
+
+![](thumbsup.jpg)
+
+Supported! (kinda)
+
+---------------------------------------------------------
+
 # Re-running Code
 
 You can re-run code by pressing **Ctrl-R** or **R**.

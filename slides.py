@@ -4,6 +4,7 @@
 # BTUI usage.
 #
 import btui.Python.btui as btui
+import climage
 import marko
 import re
 import subprocess
@@ -75,6 +76,10 @@ class TerminalRenderer(marko.Renderer):
         return "".join(lines) + "\n"
 
     def render_image(self, element) -> str:
+        if any(element.dest.lower().endswith(ext) for ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
+            output = climage.convert(element.dest, width=60, is_truecolor=True, is_256color=False, is_unicode=True)
+            return output + "\n"
+
         try:
             with open(element.dest) as f:
                 contents = f.read()
