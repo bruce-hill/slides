@@ -218,6 +218,8 @@ def present(slides:[str]):
             elif key == '`':
                 raw = not raw
                 redraw = True
+            elif key == "Resize":
+                redraw = True
             elif key in '0123456789':
                 bt.move(1, bt.height)
                 with bt.attributes("bold"):
