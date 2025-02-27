@@ -150,12 +150,7 @@ def show_slide(bt:btui.BTUI, slides:[str], index:int, raw=False):
             bt.write(pos_str)
 
 
-def present(script:str):
-    if script.startswith("#!"):
-        _,script = script.split('\n', maxsplit=1)
-
-    slides = [slide.strip() for slide in re.split(r'---+', script)]
-
+def present(slides:[str]):
     prev_index = None
     index = 0
     raw = False
@@ -205,9 +200,16 @@ if __name__ == "__main__":
         print(f"Usage: {sys.argv[0]} file1.slides [file2.slides...]")
         sys.exit(1)
 
+
+    slides = []
     for filename in sys.argv[1:]:
         try:
             with open(filename) as f:
-                present(f.read())
+                text = f.read()
+                if text.startswith("#!"):
+                    _,text = text.split('\n', maxsplit=1)
+                slides += [slide.strip() for slide in re.split(r'---+', text)]
         except FileNotFoundError:
             print(f"File not found: {filename}")
+            sys.exit(1)
+    present(slides)
