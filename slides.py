@@ -132,7 +132,7 @@ def render_markdown(md_text: str) -> str:
     ast = markdown.parse(md_text)
     return markdown.render(ast)
 
-def show_slide(bt:btui.BTUI, slides:[str], index:int, raw=False):
+def show_slide(bt:btui.BTUI, slides:[str], index:int, *, scroll=0, raw=False) -> int:
     slide = slides[index]
     with bt.buffered():
         bt.clear()
@@ -155,27 +155,36 @@ def show_slide(bt:btui.BTUI, slides:[str], index:int, raw=False):
         height = len(lines)
 
         x = max(0, (bt.width - width)//2)
-        y = max(0, (bt.height - height)//2)
+        y = max(0, (bt.height - height)//2) - scroll
         for i,line in enumerate(rendered.splitlines()):
-            bt.move(x, y + i)
-            bt.write(line)
+            if y + i in range(bt.height):
+                bt.move(x, y + i)
+                bt.write(line)
 
         pos_str = f"{index+1}/{len(slides)}"
         bt.move(bt.width-len(pos_str), bt.height)
         with bt.attributes("dim"):
             bt.write(pos_str)
 
+    return height
 
 def present(slides:[str]):
-    prev_index = None
-    index = 0
+    redraw = True
+    index, prev_index = 0, None
     raw = False
+    scroll = 0
+    render_height = 0
     with btui.open() as bt:
         key = None
         x, y = 1, 1
         while key != 'q' and key != 'Ctrl-c':
             if index != prev_index:
-                show_slide(bt, slides, index, raw=raw)
+                redraw = True
+                scroll = 0
+
+            if redraw:
+                render_height = show_slide(bt, slides, index, scroll=scroll, raw=raw)
+                redraw = False
                 prev_index = index
 
             key, mx, my = bt.getkey()
@@ -185,17 +194,30 @@ def present(slides:[str]):
                 index = max(0, index - 1)
             elif key == 'Right' or key == 'Space' or key == 'j':
                 index = min(len(slides)-1, index + 1)
+            elif key == "Up" or key == "Mouse wheel up":
+                redraw = True
+                scroll = max(0, scroll-1)
+            elif key == "Ctrl-u":
+                redraw = True
+                scroll = max(0, scroll-10)
+            elif key == "Down" or key == "Mouse wheel down":
+                scroll = min(scroll+1, max(0, render_height-bt.height-1))
+                redraw = True
+            elif key == "Ctrl-d":
+                scroll = min(scroll+10, max(0, render_height-bt.height-1))
+                redraw = True
             elif key == 'Ctrl-r' or key == 'r':
-                show_slide(bt, slides, index, raw=raw)
+                redraw = True
             elif key == 'Home' or key == 'h':
                 index = 0
             elif key == 'End' or key == 'l':
                 index = len(slides)-1
             elif key == 'Ctrl-z':
                 bt.suspend()
+                redraw = True
             elif key == '`':
                 raw = not raw
-                prev_index = None
+                redraw = True
             elif key in '0123456789':
                 bt.move(1, bt.height)
                 with bt.attributes("bold"):

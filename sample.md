@@ -80,6 +80,8 @@ This is some *markdown* text with **asterisks**.
 
 You can embed files with the syntax `[title](./file.txt)`:
 
+You can scroll up/down with **Up**/**Down**, the **mouse wheel**, or **Ctrl-U**/**Ctrl-D**.
+
 [The source for this presentation](sample.md)
 
 ---------------------------------------------------------
