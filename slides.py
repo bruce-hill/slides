@@ -4,15 +4,15 @@
 # BTUI usage.
 #
 import btui.Python.btui as btui
-import subprocess
-import re
 import marko
+import re
+import subprocess
 
 from marko.helpers import MarkoExtension
 from marko.inline import *
 from pygments import highlight
-from pygments.lexers import get_lexer_by_name
 from pygments.formatters import Terminal256Formatter
+from pygments.lexers import get_lexer_by_name
 from pygments.util import ClassNotFound
 
 FORMATTER = Terminal256Formatter(style="native")
