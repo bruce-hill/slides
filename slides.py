@@ -14,13 +14,18 @@ from pygments import highlight
 from pygments.formatters import Terminal256Formatter
 from pygments.lexers import get_lexer_by_name
 from pygments.util import ClassNotFound
+from wcwidth import wcswidth
 
 FORMATTER = Terminal256Formatter(style="native")
 
 def render_width(text:str)->int:
+    # Strip out escape sequences that are used:
     text = re.sub("\033\\[[\\d;]*.", "", text)
     text = re.sub("\033\\(.", "", text)
-    return len(text)
+
+    width = wcswidth(text)
+    assert(width >= 0) # Can happen if we missed some escape characters
+    return width
 
 def boxed(text:str, line_numbers=False, box_color="", min_width=0):
     lines = text.splitlines()

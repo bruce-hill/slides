@@ -74,6 +74,13 @@ def sing_bottles(n:int):
 This is some *markdown* text with **asterisks**.
 ```
 
+```
+Some basic emojis: 🌎💨🔥
+They do render correctly with appropriate box size
+(But your mileage may vary, depending on how your
+terminal renders emojis and what font you use)
+```
+
 ---------------------------------------------------------
 
 # Embedding files
@@ -81,6 +88,8 @@ This is some *markdown* text with **asterisks**.
 You can embed files with the syntax `[title](./file.txt)`:
 
 You can scroll up/down with **Up**/**Down**, the **mouse wheel**, or **Ctrl-U**/**Ctrl-D**.
+
+[Tale of Genji](genji.txt)
 
 [The source for this presentation](sample.md)
 
