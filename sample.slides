@@ -8,6 +8,8 @@
 
 You can see the slide number in the bottom left corner.
 
+Slides are separated by three or more dashes on a line: `---`
+
 To advance to the next slide, press **Right** or **Space** or **J**.
 
 ---------------------------------------------------------

@@ -206,9 +206,13 @@ if __name__ == "__main__":
         try:
             with open(filename) as f:
                 text = f.read()
-                if text.startswith("#!"):
-                    _,text = text.split('\n', maxsplit=1)
-                slides += [slide.strip() for slide in re.split(r'---+', text)]
+                if any(filename.endswith(ext) for ext in (".slides", ".md", ".txt")):
+                    if text.startswith("#!"):
+                        _,text = text.split('\n', maxsplit=1)
+                    slides += [slide.strip() for slide in re.split(r'(?m)^\-{3,}$', text)]
+                else:
+                    extension = filename.rpartition(".")[2] if "." in filename else ""
+                    slides += [f"```{extension}\n{text.strip()}\n```"]
         except FileNotFoundError:
             print(f"File not found: {filename}")
             sys.exit(1)
