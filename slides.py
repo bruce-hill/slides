@@ -3,7 +3,7 @@
 # This file contains a simple test program for demonstrating some basic Python
 # BTUI usage.
 #
-import btui
+import btui.Python.btui as btui
 import subprocess
 import re
 import marko

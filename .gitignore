@@ -1,6 +1,4 @@
 build
-libbtui.so
-btui.py
 __pycache__
 slides.spec
 slides
