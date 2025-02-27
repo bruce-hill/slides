@@ -28,7 +28,7 @@ You can also type in a slide number and hit **Enter** to go to that slide.
 
 # Basic Features
 
-This is **italic**, *bold*, `inline code` and [a link](https://bruce-hill.com).
+This is **italic**, *bold*, and `inline code`
 The paragraph continues on line two.
 
 - A list
@@ -45,10 +45,6 @@ Here's a shell example:
 
 ```run
 ls --color=auto
-```
-
-```
-plain text
 ```
 
 ---------------------------------------------------------
@@ -77,6 +73,14 @@ def sing_bottles(n:int):
 ```markdown
 This is some *markdown* text with **asterisks**.
 ```
+
+---------------------------------------------------------
+
+# Embedding files
+
+You can embed files with the syntax `[title](./file.txt)`:
+
+[The source for this presentation](sample.md)
 
 ---------------------------------------------------------
 

@@ -22,7 +22,7 @@ def render_width(text:str)->int:
     text = re.sub("\033\\(.", "", text)
     return len(text)
 
-def boxed(text:str, line_numbers=False, title="", box_color="", min_width=0):
+def boxed(text:str, line_numbers=False, box_color="", min_width=0):
     lines = text.splitlines()
     width = 2 + max(render_width(line) for line in lines) + 2
     if line_numbers: width += len(str(len(lines))) + 1
@@ -65,7 +65,23 @@ class TerminalRenderer(marko.Renderer):
         return "".join(lines) + "\n"
 
     def render_link(self, element) -> str:
-        return f"\033[34;4m{self.render_children(element)}\033[0m"
+        try:
+            with open(element.dest) as f:
+                contents = f.read()
+        except FileNotFoundError:
+            return f"\n\033[31;1m<File not found: {element.dest}>\033[m\n"
+
+        extension = element.dest.rpartition(".")[2] if "." in element.dest else ""
+        try:
+            lexer = get_lexer_by_name(extension, stripall=True)
+        except ClassNotFound:
+            code = contents
+        else:
+            code = highlight(contents, lexer, FORMATTER)
+
+        title = self.render_children(element) or element.dest
+        heading = f"\033[1;36;7m{title:^{TerminalRenderer.width}}\033[22;27m"
+        return "\n" + heading + "\n" + boxed(code, line_numbers=True, box_color="\033[36m", min_width=TerminalRenderer.width) + "\n\n"
 
     def render_emphasis(self, element) -> str:
         return f"\033[3m{self.render_children(element)}\033[23m"
