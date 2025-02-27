@@ -1,10 +1,10 @@
-#!./termpresent
+#!./slides
 
-# termpres Demo
+# Slides Demo
 
 *by Bruce Hill*
 
-**termpres** is a terminal slide presenter.
+**slides** is a terminal slide presenter.
 
 You can see the slide number in the bottom left corner.
 
