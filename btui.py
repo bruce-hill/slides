@@ -196,9 +196,10 @@ class BTUI:
     @contextmanager
     def buffered(self):
         assert self._btui
+        prev_autoflush = self._autoflush
         self._autoflush = False
         yield
-        self._autoflush = True
+        self._autoflush = prev_autoflush
         self.flush()
 
     def getkey(self, timeout=None):
