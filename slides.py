@@ -201,6 +201,10 @@ def present(script:str):
 
 if __name__ == "__main__":
     import sys
+    if len(sys.argv) < 2:
+        print(f"Usage: {sys.argv[0]} file1.slides [file2.slides...]")
+        sys.exit(1)
+
     for filename in sys.argv[1:]:
         try:
             with open(filename) as f:
