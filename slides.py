@@ -57,11 +57,12 @@ class TerminalRenderer(marko.Renderer):
         return super().render_children(element)
 
     def render_heading(self, element):
+        title = " "+self.render_children(element)+" "
         if element.level == 1:
             row = "\033[1;7m" + " "*TerminalRenderer.width + "\033[22;27m\n"
-            return row + f"\033[1;7m{self.render_children(element):^{TerminalRenderer.width}}\033[22;27m\n" + row + "\n"
+            return row + f"\033[1;7m{title:^{TerminalRenderer.width}}\033[22;27m\n" + row + "\n"
         else:
-            return f"\033[1;7m{self.render_children(element):^{TerminalRenderer.width}}\033[22;27m\n\n"
+            return f"\033[1;7m{title:^{TerminalRenderer.width}}\033[22;27m\n\n"
 
     def render_list(self, element) -> str:
         lines = []
