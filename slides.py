@@ -15,7 +15,7 @@ from pygments.lexers import get_lexer_by_name
 from pygments.formatters import Terminal256Formatter
 from pygments.util import ClassNotFound
 
-FORMATTER = Terminal256Formatter(style="monokai")
+FORMATTER = Terminal256Formatter(style="native")
 
 def render_width(text:str)->int:
     text = re.sub("\033\\[[\\d;]*.", "", text)
