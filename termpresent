@@ -151,6 +151,9 @@ def show_slide(bt:btui.BTUI, slides:[str], index:int, raw=False):
 
 
 def present(script:str):
+    if script.startswith("#!"):
+        _,script = script.split('\n', maxsplit=1)
+
     slides = [slide.strip() for slide in re.split(r'---+', script)]
 
     prev_index = None
