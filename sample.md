@@ -49,6 +49,17 @@ ls --color=auto
 
 ---------------------------------------------------------
 
+# Demos
+
+For runnable demos, you can use ```` ```demo ````
+and press **Enter** to run the demo
+
+```demo
+seq 1000 | less
+```
+
+---------------------------------------------------------
+
 # Syntax Highlighting
 
 Some code:
