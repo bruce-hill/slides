@@ -6,9 +6,11 @@
 import btui.Python.btui as btui
 import climage
 import marko
+import os
 import re
 import subprocess
 
+from collections import namedtuple
 from marko.helpers import MarkoExtension
 from marko.inline import *
 from pygments import highlight
@@ -16,6 +18,8 @@ from pygments.formatters import Terminal256Formatter
 from pygments.lexers import get_lexer_by_name
 from pygments.util import ClassNotFound
 from wcwidth import wcswidth
+
+Slide = namedtuple("Slide", ("filename", "text"))
 
 FORMATTER = Terminal256Formatter(style="native")
 
@@ -48,6 +52,7 @@ def boxed(text:str, line_numbers=False, box_color="", min_width=0):
 
 class TerminalRenderer(marko.Renderer):
     width = 40
+    relative_filename = "."
 
     def render_document(self, element):
         return self.render_children(element)
@@ -76,17 +81,18 @@ class TerminalRenderer(marko.Renderer):
         return "".join(lines) + "\n"
 
     def render_image(self, element) -> str:
-        if any(element.dest.lower().endswith(ext) for ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
-            output = climage.convert(element.dest, width=60, is_truecolor=True, is_256color=False, is_unicode=True)
+        path = element.dest if os.path.isabs(element.dest) else os.path.join(os.path.dirname(self.relative_filename), element.dest)
+        if any(path.lower().endswith(ext) for ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
+            output = climage.convert(path, width=80, is_truecolor=True, is_256color=False, is_unicode=True)
             return output + "\n"
 
         try:
-            with open(element.dest) as f:
+            with open(path) as f:
                 contents = f.read()
         except FileNotFoundError:
             return f"\n\033[31;1m<File not found: {element.dest}>\033[m\n"
 
-        extension = element.dest.rpartition(".")[2] if "." in element.dest else ""
+        extension = path.rpartition(".")[2] if "." in path else ""
         try:
             lexer = get_lexer_by_name(extension, stripall=True)
         except ClassNotFound:
@@ -94,7 +100,7 @@ class TerminalRenderer(marko.Renderer):
         else:
             code = highlight(contents, lexer, FORMATTER)
 
-        title = self.render_children(element) or element.dest
+        title = self.render_children(element) or path
         heading = f"\033[1;36;7m{title:^{TerminalRenderer.width}}\033[22;27m"
         return "\n" + heading + "\n" + boxed(code, line_numbers=True, box_color="\033[36m", min_width=TerminalRenderer.width) + "\n\n"
 
@@ -171,18 +177,19 @@ def run_demos(ast):
         raise ValueError(f"Not an element! {ast}")
 
 markdown = marko.Markdown(renderer=TerminalRenderer)
-def render_markdown(md_text: str) -> str:
-    ast = markdown.parse(md_text)
+def render_markdown(slide:Slide) -> str:
+    TerminalRenderer.relative_filename = slide.filename
+    ast = markdown.parse(slide.text)
     return markdown.render(ast)
 
-def show_slide(bt:btui.BTUI, slides:[str], index:int, *, scroll=0, raw=False) -> int:
+def show_slide(bt:btui.BTUI, slides:[Slide], index:int, *, scroll=0, raw=False) -> int:
     slide = slides[index]
     with bt.buffered():
         bt.clear()
 
         if raw:
             lexer = get_lexer_by_name("markdown", stripall=True)
-            code = highlight(slides[index], lexer, FORMATTER)
+            code = highlight(slide.text, lexer, FORMATTER)
             for i,line in enumerate(code.splitlines()):
                 bt.move(0, i)
                 bt.write(line)
@@ -299,10 +306,10 @@ if __name__ == "__main__":
                 if any(filename.endswith(ext) for ext in (".slides", ".md", ".txt")):
                     if text.startswith("#!"):
                         _,text = text.split('\n', maxsplit=1)
-                    slides += [slide.strip() for slide in re.split(r'(?m)^\-{3,}$', text)]
+                    slides += [Slide(filename, slide.strip()) for slide in re.split(r'(?m)^\-{3,}$', text)]
                 else:
                     extension = filename.rpartition(".")[2] if "." in filename else ""
-                    slides += [f"```{extension}\n{text.strip()}\n```"]
+                    slides += [Slide(filename, f"```{extension}\n{text.strip()}\n```")]
         except FileNotFoundError:
             print(f"File not found: {filename}")
             sys.exit(1)
