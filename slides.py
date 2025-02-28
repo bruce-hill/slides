@@ -7,6 +7,8 @@ import btui.Python.btui as btui
 import climage
 import marko
 import os
+# import pyfiglet
+# import pyfiglet.fonts
 import re
 import subprocess
 
@@ -64,11 +66,12 @@ class TerminalRenderer(marko.Renderer):
 
     def render_heading(self, element):
         title = " "+self.render_children(element)+" "
-        # if element.level == 1:
-        #     import pyfiglet
-        #     return "\033[1;34m" + pyfiglet.figlet_format(title, width=200, font="big").rstrip('\n') + "\033[m\n\n"
-        # else:
-        return f"\033[1;7m{title:^{TerminalRenderer.width}}\033[22;27m\n\n"
+        if element.level == 1:
+            #return "\033[1;34m" + pyfiglet.figlet_format(title, width=200, font="big").rstrip('\n') + "\033[m\n\n"
+            line = "\033[1;7m" + " "*TerminalRenderer.width + "\033[22;27m\n"
+            return line + f"\033[1;7m{title:^{TerminalRenderer.width}}\033[22;27m\n" + line + "\n"
+        else:
+            return f"\033[1;7m{title:^{TerminalRenderer.width}}\033[22;27m\n\n"
 
     def render_list(self, element) -> str:
         lines = []
@@ -132,7 +135,7 @@ class TerminalRenderer(marko.Renderer):
             output = subprocess.check_output(
                 ["script", "-qc", raw_code.strip(), "/dev/null"],
                 stdin=open("/dev/null", "r"),
-                cwd=os.path.dirname(TerminalRenderer.relative_filename),
+                cwd=os.path.dirname(TerminalRenderer.relative_filename) or '.',
             ).decode("utf-8").rstrip("\n")
             return boxed("\033[33;1m$\033[m " + code + "\n" + output, line_numbers=False, box_color="\033[33m", min_width=TerminalRenderer.width) + "\n\n"
         elif element.lang == "demo":
@@ -168,7 +171,7 @@ def run_demos(ast):
             raw_code = ast.children[0].children
             result = subprocess.run(
                 ["bash", "-c", raw_code.strip()],
-                cwd=os.path.dirname(TerminalRenderer.relative_filename),
+                cwd=os.path.dirname(TerminalRenderer.relative_filename) or '.',
             )
     elif isinstance(ast, marko.inline.Link):
         result = subprocess.run(["firefox", "--new-window", ast.dest])
