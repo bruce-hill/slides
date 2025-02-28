@@ -169,12 +169,17 @@ def run_demos(ast):
     if isinstance(ast, (marko.block.CodeBlock, marko.block.FencedCode)):
         if ast.lang == "demo":
             raw_code = ast.children[0].children
-            result = subprocess.run(
+            subprocess.run(
                 ["bash", "-c", raw_code.strip()],
                 cwd=os.path.dirname(TerminalRenderer.relative_filename) or '.',
             )
     elif isinstance(ast, marko.inline.Link):
-        result = subprocess.run(["firefox", "--new-window", ast.dest])
+        subprocess.run(["firefox", "--new-window", ast.dest])
+    elif isinstance(ast, marko.inline.Image):
+        link_text = markdown.render(ast.children[0])
+        if link_text:
+            path = ast.dest if os.path.isabs(ast.dest) else os.path.join(os.path.dirname(TerminalRenderer.relative_filename), ast.dest)
+            subprocess.run(link_text.split() + [path])
     elif isinstance(ast, marko.element.Element):
         if hasattr(ast, "children"):
             for child in ast.children:
@@ -182,7 +187,7 @@ def run_demos(ast):
         else:
             raise ValueError(f"No children! {ast}")
     elif isinstance(ast, str):
-        return
+        pass
     else:
         raise ValueError(f"Not an element! {ast}")
 
