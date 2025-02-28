@@ -224,9 +224,9 @@ def present(slides:[str]):
     raw = False
     scroll = 0
     render_height = 0
+    search = ''
     with btui.open() as bt:
         key = None
-        x, y = 1, 1
         while key != 'q' and key != 'Ctrl-c':
             if index != prev_index:
                 redraw = True
@@ -238,7 +238,6 @@ def present(slides:[str]):
                 prev_index = index
 
             key, mx, my = bt.getkey()
-            if mx: x, y = mx, my
 
             if key == 'Left' or key == 'k' or key == 'Backspace':
                 index = max(0, index - 1)
@@ -286,10 +285,41 @@ def present(slides:[str]):
                     bt.write(key)
                     index_str += key
                     key, mx, my = bt.getkey()
-                    if mx: x, y = mx, my
 
                 if key == 'Enter':
                     index = max(0, min(len(slides)-1, int(index_str)-1))
+            elif key == '/':
+                bt.move(1, bt.height)
+                with bt.attributes("bold"):
+                    bt.write("Go to slide: ")
+
+                search = ''
+                key, mx, my = bt.getkey()
+                while key not in ('Ctrl-c', 'Enter'):
+                    if key == 'Backspace':
+                        if search:
+                            search = search[:-1]
+                            bt.write('\b \b')
+                    else:
+                        search += key
+                        bt.write(key)
+                    key, mx, my = bt.getkey()
+
+                if key == 'Enter':
+                    for offset in range(len(slides)):
+                        if search.lower() in slides[(index + 1 + offset) % len(slides)].text.lower():
+                            index = (index + 1 + offset) % len(slides)
+                            break
+            elif key == 'n': # Next search result
+                for offset in range(len(slides)):
+                    if search.lower() in slides[(index + 1 + offset) % len(slides)].text.lower():
+                        index = (index + 1 + offset) % len(slides)
+                        break
+            elif key == 'p': # Previous search result
+                for offset in range(len(slides)):
+                    if search.lower() in slides[(index - 1 - offset + 2*len(slides)) % len(slides)].text.lower():
+                        index = (index - 1 - offset + 2*len(slides)) % len(slides)
+                        break
 
 if __name__ == "__main__":
     import sys
