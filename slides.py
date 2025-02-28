@@ -64,11 +64,11 @@ class TerminalRenderer(marko.Renderer):
 
     def render_heading(self, element):
         title = " "+self.render_children(element)+" "
-        if element.level == 1:
-            row = "\033[1;7m" + " "*TerminalRenderer.width + "\033[22;27m\n"
-            return row + f"\033[1;7m{title:^{TerminalRenderer.width}}\033[22;27m\n" + row + "\n"
-        else:
-            return f"\033[1;7m{title:^{TerminalRenderer.width}}\033[22;27m\n\n"
+        # if element.level == 1:
+        #     import pyfiglet
+        #     return "\033[1;34m" + pyfiglet.figlet_format(title, width=200, font="big").rstrip('\n') + "\033[m\n\n"
+        # else:
+        return f"\033[1;7m{title:^{TerminalRenderer.width}}\033[22;27m\n\n"
 
     def render_list(self, element) -> str:
         lines = []
@@ -129,7 +129,11 @@ class TerminalRenderer(marko.Renderer):
         if element.lang == "run":
             lexer = get_lexer_by_name("bash", stripall=True)
             code = highlight(raw_code, lexer, FORMATTER)
-            output = subprocess.check_output(["script", "-qc", raw_code.strip(), "/dev/null"], stdin=open("/dev/null", "r")).decode("utf-8").rstrip("\n")
+            output = subprocess.check_output(
+                ["script", "-qc", raw_code.strip(), "/dev/null"],
+                stdin=open("/dev/null", "r"),
+                cwd=os.path.dirname(TerminalRenderer.relative_filename),
+            ).decode("utf-8").rstrip("\n")
             return boxed("\033[33;1m$\033[m " + code + "\n" + output, line_numbers=False, box_color="\033[33m", min_width=TerminalRenderer.width) + "\n\n"
         elif element.lang == "demo":
             lexer = get_lexer_by_name("bash", stripall=True)
@@ -162,7 +166,10 @@ def run_demos(ast):
     if isinstance(ast, (marko.block.CodeBlock, marko.block.FencedCode)):
         if ast.lang == "demo":
             raw_code = ast.children[0].children
-            result = subprocess.run(["bash", "-c", raw_code.strip()])
+            result = subprocess.run(
+                ["bash", "-c", raw_code.strip()],
+                cwd=os.path.dirname(TerminalRenderer.relative_filename),
+            )
     elif isinstance(ast, marko.inline.Link):
         result = subprocess.run(["firefox", "--new-window", ast.dest])
     elif isinstance(ast, marko.element.Element):
@@ -267,7 +274,7 @@ def present(slides:[str]):
             elif key == 'Enter':
                 with bt.disabled():
                     bt.flush()
-                    ast = markdown.parse(slides[index])
+                    ast = markdown.parse(slides[index].text)
                     run_demos(ast)
 
                 redraw = True
