@@ -222,21 +222,24 @@ def show_slide(bt:btui.BTUI, slides:[Slide], index:int, *, scroll=0, raw=False) 
                 bt.write(line)
             return
 
-        TerminalRenderer.width = bt.width//4
-        rendered = render_markdown(slide)
-        TerminalRenderer.width = max(render_width(line) for line in rendered.splitlines())
-        rendered = render_markdown(slide)
+        if slide.text.strip():
+            TerminalRenderer.width = bt.width//4
+            rendered = render_markdown(slide)
+            TerminalRenderer.width = max(render_width(line) for line in rendered.splitlines())
+            rendered = render_markdown(slide)
 
-        lines = rendered.splitlines()
-        width = max(render_width(line) for line in lines)
-        height = len(lines)
+            lines = rendered.splitlines()
+            width = max(render_width(line) for line in lines)
+            height = len(lines)
 
-        x = max(0, (bt.width - width)//2)
-        y = max(0, (bt.height - height)//2) - scroll
-        for i,line in enumerate(rendered.splitlines()):
-            if y + i in range(bt.height):
-                bt.move(x, y + i)
-                bt.write(line)
+            x = max(0, (bt.width - width)//2)
+            y = max(0, (bt.height - height)//2) - scroll
+            for i,line in enumerate(rendered.splitlines()):
+                if y + i in range(bt.height):
+                    bt.move(x, y + i)
+                    bt.write(line)
+        else:
+            width,height = 0,0
 
         pos_str = f"{index+1}/{len(slides)}"
         bt.move(bt.width-len(pos_str), bt.height)
