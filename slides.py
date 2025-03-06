@@ -73,15 +73,27 @@ class TerminalRenderer(marko.Renderer):
         else:
             return f"\033[1;7m{title:^{TerminalRenderer.width}}\033[22;27m\n\n"
 
+    _list_depth = 0
     def render_list(self, element) -> str:
         lines = []
         if element.ordered:
             for num, child in enumerate(element.children, element.start):
-                lines.append(f"\033[1m{num}.\033[m {self.render(child).rstrip()}\n")
+                child.bullet = f"\033[1m{num:>2}.\033[m "
+                child_rendered = self.render(child).strip('\n')
+                lines.append(child_rendered)
         else:
             for child in element.children:
-                lines.append(f"\033[1m\033(0`\033(B\033[m {self.render(child).rstrip()}\n")
-        return "".join(lines) + "\n"
+                child.bullet = "  \033[1m\033(0`\033(B\033[m "
+                child_rendered = self.render(child).strip('\n')
+                lines.append(child_rendered)
+        return "\n".join(lines) + "\n\n"
+    
+    def render_list_item(self, element) -> str:
+        indent = "  "*self._list_depth
+        self._list_depth += 1
+        result = indent + element.bullet + "\n".join(self.render(child).strip('\n') for child in element.children)
+        self._list_depth -= 1
+        return result
 
     def render_image(self, element) -> str:
         path = element.dest if os.path.isabs(element.dest) else os.path.join(os.path.dirname(self.relative_filename), element.dest)
