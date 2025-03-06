@@ -29,12 +29,14 @@ def render_width(text:str)->int:
     # Strip out escape sequences that are used:
     text = re.sub("\033\\[[\\d;]*.", "", text)
     text = re.sub("\033\\(.", "", text)
+    text = re.sub("\t", "    ", text)
 
     width = wcswidth(text)
     assert(width >= 0) # Can happen if we missed some escape characters
     return width
 
 def boxed(text:str, line_numbers=False, box_color="", min_width=0):
+    text = re.sub("\t", "    ", text)
     lines = text.splitlines()
     width = 2 + max(render_width(line) for line in lines) + 2
     if line_numbers: width += len(str(len(lines))) + 1
@@ -98,7 +100,7 @@ class TerminalRenderer(marko.Renderer):
     def render_image(self, element) -> str:
         path = element.dest if os.path.isabs(element.dest) else os.path.join(os.path.dirname(self.relative_filename), element.dest)
         if any(path.lower().endswith(ext) for ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
-            output = climage.convert(path, width=80, is_truecolor=True, is_256color=False, is_unicode=True)
+            output = climage.convert(path, width=50, is_truecolor=True, is_256color=False, is_unicode=True)
             return output + "\n"
 
         try:
