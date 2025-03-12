@@ -90,7 +90,7 @@ class TerminalRenderer(marko.Renderer):
                 child.bullet = "  "+BULLET+" "
                 child_rendered = self.render(child).strip('\n')
                 lines.append(child_rendered)
-        return "\n".join(lines) + "\n\n"
+        return "\n\n".join(lines) + "\n\n"
     
     def render_list_item(self, element) -> str:
         indent = "  "*self._list_depth
