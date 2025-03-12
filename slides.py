@@ -24,9 +24,11 @@ from wcwidth import wcswidth
 Slide = namedtuple("Slide", ("filename", "text"))
 
 FORMATTER = Terminal256Formatter(style="native")
+BULLET = "\033[1m\033(0`\033(B\033[m"
 
 def render_width(text:str)->int:
     # Strip out escape sequences that are used:
+    text = text.replace(BULLET, "*")
     text = re.sub("\033\\[[\\d;]*.", "", text)
     text = re.sub("\033\\(.", "", text)
     text = re.sub("\t", "    ", text)
@@ -85,7 +87,7 @@ class TerminalRenderer(marko.Renderer):
                 lines.append(child_rendered)
         else:
             for child in element.children:
-                child.bullet = "  \033[1m\033(0`\033(B\033[m "
+                child.bullet = "  "+BULLET+" "
                 child_rendered = self.render(child).strip('\n')
                 lines.append(child_rendered)
         return "\n".join(lines) + "\n\n"
