@@ -109,6 +109,9 @@ You can scroll up/down with **Up**/**Down**, the **mouse wheel**, or **Ctrl-U**/
 # Images
 
 ![sxiv -f -sf](thumbsup.jpg)
+```demo
+seq 1000 | less
+```
 
 Supported! (kinda)
 

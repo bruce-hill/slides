@@ -179,31 +179,38 @@ class TerminalRenderer(marko.Renderer):
     def render_paragraph(self, element) -> str:
         return f"{self.render_children(element).strip()}\n\n"
 
-def run_demos(ast):
+def get_demos(ast) -> list:
     if isinstance(ast, (marko.block.CodeBlock, marko.block.FencedCode)):
         if ast.lang == "demo":
-            raw_code = ast.children[0].children
-            subprocess.run(
-                ["bash", "-c", raw_code.strip()],
-                cwd=os.path.dirname(TerminalRenderer.relative_filename) or '.',
-            )
+            def demo():
+                raw_code = ast.children[0].children
+                subprocess.run(
+                    ["bash", "-c", raw_code.strip()],
+                    cwd=os.path.dirname(TerminalRenderer.relative_filename) or '.',
+                )
+            return [demo]
     elif isinstance(ast, marko.inline.Link):
-        subprocess.run(["firefox", "--new-window", ast.dest])
+        def demo():
+            subprocess.run(["firefox", "--new-window", ast.dest])
+        return [demo]
     elif isinstance(ast, marko.inline.Image):
         link_text = markdown.render(ast.children[0])
         if link_text:
             path = ast.dest if os.path.isabs(ast.dest) else os.path.join(os.path.dirname(TerminalRenderer.relative_filename), ast.dest)
-            subprocess.run(link_text.split() + [path])
+            def demo():
+                subprocess.run(link_text.split() + [path])
+            return [demo]
     elif isinstance(ast, marko.element.Element):
         if hasattr(ast, "children"):
+            demos = []
             for child in ast.children:
-                run_demos(child)
+                demos += get_demos(child)
+            return demos
         else:
             raise ValueError(f"No children! {ast}")
-    elif isinstance(ast, str):
-        pass
-    else:
+    elif not isinstance(ast, str):
         raise ValueError(f"Not an element! {ast}")
+    return []
 
 markdown = marko.Markdown(renderer=TerminalRenderer)
 def render_markdown(slide:Slide) -> str:
@@ -264,6 +271,10 @@ def present(slides:[str]):
                 redraw = True
                 scroll = 0
 
+                ast = markdown.parse(slides[index].text)
+                demos = get_demos(ast)
+                demo_index = 0
+
             if redraw:
                 render_height = show_slide(bt, slides, index, scroll=scroll, raw=raw)
                 redraw = False
@@ -297,12 +308,13 @@ def present(slides:[str]):
                 bt.suspend()
                 redraw = True
             elif key == 'Enter':
-                with bt.disabled():
-                    bt.flush()
-                    ast = markdown.parse(slides[index].text)
-                    run_demos(ast)
-
-                redraw = True
+                if len(demos) > 0:
+                    with bt.disabled():
+                        bt.flush()
+                        demos[demo_index]()
+                        if demo_index + 1 < len(demos):
+                            demo_index += 1
+                    redraw = True
             elif key == '`':
                 raw = not raw
                 redraw = True
