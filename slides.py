@@ -101,8 +101,8 @@ class TerminalRenderer(marko.Renderer):
 
     def render_image(self, element) -> str:
         path = element.dest if os.path.isabs(element.dest) else os.path.join(os.path.dirname(self.relative_filename), element.dest)
-        if any(path.lower().endswith(ext) for ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
-            output = climage.convert(path, width=50, is_truecolor=True, is_256color=False, is_unicode=True)
+        if any(path.lower().endswith(ext) for ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')):
+            output = climage.convert(path, width=40, is_truecolor=True, is_256color=False, is_unicode=True)
             return output + "\n"
 
         try:
@@ -132,6 +132,9 @@ class TerminalRenderer(marko.Renderer):
 
     def render_strong_emphasis(self, element) -> str:
         return f"\033[1m{self.render_children(element)}\033[22m"
+
+    def render_strikethrough(self, element) -> str:
+        return f"\033[9m{self.render_children(element)}\033[29m"
 
     def render_code_span(self, element) -> str:
         return f"\033[1;32;48;2;40;50;40m{element.children}\033[22;39;49m"
@@ -196,6 +199,7 @@ def get_demos(ast) -> list:
             subprocess.run(["firefox", "--new-window", ast.dest])
         return [demo]
     elif isinstance(ast, marko.inline.Image):
+        if not ast.children: return []
         link_text = markdown.render(ast.children[0])
         if link_text:
             path = ast.dest if os.path.isabs(ast.dest) else os.path.join(os.path.dirname(TerminalRenderer.relative_filename), ast.dest)
