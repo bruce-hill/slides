@@ -181,7 +181,7 @@ class TerminalRenderer(marko.Renderer):
             lexer = get_lexer_by_name("bash", stripall=True)
             code = highlight(raw_code, lexer, FORMATTER)
             output = subprocess.check_output(
-                ["script", "-qc", raw_code.strip(), "/dev/null"],
+                ["bash", "-c", raw_code.strip()],
                 stdin=open("/dev/null", "r"),
                 cwd=os.path.dirname(TerminalRenderer.relative_filename) or '.',
             ).decode("utf-8").rstrip("\n")
