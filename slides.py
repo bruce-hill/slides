@@ -9,6 +9,7 @@ import marko
 import os
 import re
 import subprocess
+import time
 import webbrowser
 import PIL
 
@@ -289,6 +290,15 @@ def show_slide(bt:btui.BTUI, slides:[Slide], index:int, *, scroll=0, raw=False) 
 
     return height
 
+def draw_time(bt:btui.BTUI, start_time:float):
+    elapsed = time.perf_counter() - start_time
+    bt.move(0, terminal_height-1)
+    with bt.attributes("dim"):
+        if elapsed >= 3600:
+            bt.write(f"{int(elapsed//3600)}:{int((elapsed % 3600)//60):02}:{int(elapsed % 60):02}")
+        else:
+            bt.write(f"{int(elapsed//60):2}:{int(elapsed % 60):02}")
+
 def present(slides:[str]):
     global terminal_width, terminal_height
     redraw = True
@@ -297,6 +307,7 @@ def present(slides:[str]):
     scroll = 0
     render_height = 0
     search = ''
+    start_time = time.perf_counter()
     with btui.open() as bt:
         terminal_width, terminal_height = bt.width, bt.height
         key = None
@@ -311,12 +322,17 @@ def present(slides:[str]):
 
             if redraw:
                 render_height = show_slide(bt, slides, index, scroll=scroll, raw=raw)
+                draw_time(bt, start_time)
                 redraw = False
                 prev_index = index
 
-            key, mx, my = bt.getkey()
+            key, mx, my = bt.getkey(10)
 
-            if key == 'Left' or key == 'k' or key == 'Backspace':
+            draw_time(bt, start_time)
+
+            if key is None:
+                pass
+            elif key == 'Left' or key == 'k' or key == 'Backspace':
                 index = max(0, index - 1)
             elif key == 'Right' or key == 'Space' or key == 'j':
                 index = min(len(slides)-1, index + 1)
