@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import webbrowser
+import PIL
 
 from collections import namedtuple
 from marko.helpers import MarkoExtension
@@ -37,6 +38,9 @@ def render_width(text:str)->int:
     width = wcswidth(text)
     assert(width >= 0) # Can happen if we missed some escape characters
     return width
+
+def is_image(path:str)->bool:
+    return any(path.lower().endswith(ext) for ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'))
 
 def boxed(text:str, line_numbers=False, box_color="", min_width=0):
     text = re.sub("\t", "    ", text)
@@ -102,11 +106,35 @@ class TerminalRenderer(marko.Renderer):
 
     def render_image(self, element) -> str:
         path = element.dest if os.path.isabs(element.dest) else os.path.join(os.path.dirname(self.relative_filename), element.dest)
-        if any(path.lower().endswith(ext) for ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')):
-            output = climage.convert(path, width=max(40, 2*terminal_width//3), is_truecolor=True, is_256color=False, is_unicode=True)
+        if is_image(path):
+            img = PIL.Image.open(path)
+            img_width, img_height = img.size
+            render_width, render_height = img_width, img_height
+
+            two_thirds_width = max(40, 2*terminal_width//3)
+            if two_thirds_width < render_width:
+                render_width = two_thirds_width
+                render_height = int(img_height * (render_width/img_width)/2)
+
+            two_thirds_height = max(40, 2*terminal_height//3)
+            if two_thirds_height < render_height:
+                render_height = two_thirds_height
+                render_width = int(img_width * 2*(render_height/img_height))
+
+            option_string = markdown.render(element.children[0]) if element.children else ""
+            for w in re.findall(r'width=(\d+)%', option_string):
+                render_width = int(terminal_width * float(w)/100)
+                render_height = int(img_height * (render_width/img_width)/2)
+
+            for h in re.findall(r'height=(\d+)%', option_string):
+                render_height = int(terminal_height * float(h)/100)
+                render_width = int(img_width * 2*(render_height/img_height))
+
+            output = climage.convert(path, width=render_width, is_truecolor=True, is_256color=False, is_unicode=True)
             return output + "\n"
 
         try:
+            # Embedded file:
             with open(path) as f:
                 contents = f.read()
         except FileNotFoundError:
@@ -201,12 +229,9 @@ def get_demos(ast) -> list:
         return [demo]
     elif isinstance(ast, marko.inline.Image):
         if not ast.children: return []
-        link_text = markdown.render(ast.children[0])
-        if link_text:
-            path = ast.dest if os.path.isabs(ast.dest) else os.path.join(os.path.dirname(TerminalRenderer.relative_filename), ast.dest)
-            def demo():
-                subprocess.run(link_text.split() + [path])
-            return [demo]
+        path = ast.dest if os.path.isabs(ast.dest) else os.path.join(os.path.dirname(TerminalRenderer.relative_filename), ast.dest)
+        if is_image(path):
+            return [lambda: PIL.Image.open(path).show()]
     elif isinstance(ast, marko.element.Element):
         if hasattr(ast, "children"):
             demos = []
