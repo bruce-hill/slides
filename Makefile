@@ -11,6 +11,8 @@ btui/Python/libbtui.so: btui/Makefile
 btui/Makefile:
 	git submodule update --init --recursive
 
+virtualenv: .dependencies-installed .venv/bin/activate
+
 .venv/bin/activate:
 	python3 -m venv .venv
 
@@ -21,3 +23,5 @@ install: dist/slides/slides
 	install -d $(PREFIX)/share/slides/
 	cp -r dist/slides/* $(PREFIX)/share/slides/
 	ln -sf $(PREFIX)/share/slides/slides ~/.local/bin/slides
+
+.PHONY: all install virtualenv
