@@ -9,6 +9,7 @@ import marko
 import os
 import re
 import subprocess
+import webbrowser
 
 from collections import namedtuple
 from marko.helpers import MarkoExtension
@@ -196,7 +197,7 @@ def get_demos(ast) -> list:
             return [demo]
     elif isinstance(ast, marko.inline.Link):
         def demo():
-            subprocess.run(["firefox", "--new-window", ast.dest])
+            webbrowser.open(ast.dest, new=1)
         return [demo]
     elif isinstance(ast, marko.inline.Image):
         if not ast.children: return []
