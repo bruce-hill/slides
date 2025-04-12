@@ -3,6 +3,7 @@
 # This file contains a simple test program for demonstrating some basic Python
 # BTUI usage.
 #
+import PIL
 import btui.Python.btui as btui
 import climage
 import marko
@@ -11,7 +12,6 @@ import re
 import subprocess
 import time
 import webbrowser
-import PIL
 
 from collections import namedtuple
 from marko.helpers import MarkoExtension
@@ -23,11 +23,15 @@ from pygments.util import ClassNotFound
 from wcwidth import wcswidth
 
 Slide = namedtuple("Slide", ("filename", "text"))
+class Demo(namedtuple("_Demo", ("element", "demo"))):
+    __slots__ = ()
+    def __call__(self): self.demo()
 
 FORMATTER = Terminal256Formatter(style="native")
 BULLET = "\033[1m\033(0`\033(B\033[m"
 
 terminal_width, terminal_height = 0, 0
+highlighted_element = None
 
 def render_width(text:str)->int:
     # Strip out escape sequences that are used:
@@ -132,6 +136,10 @@ class TerminalRenderer(marko.Renderer):
                 render_width = int(img_width * 2*(render_height/img_height))
 
             output = climage.convert(path, width=render_width, is_truecolor=True, is_256color=False, is_unicode=True)
+            if element is highlighted_element:
+                output = output.replace("\n", "\033[33m*\033[m\n", count=1)
+            else:
+                output = output.replace("\n", " \n", count=1)
             return output + "\n"
 
         try:
@@ -155,7 +163,7 @@ class TerminalRenderer(marko.Renderer):
 
     def render_link(self, element) -> str:
         title = self.render_children(element) or element.dest
-        return f"\033[1;4;34m{title}\033[m"
+        return f"\033[{'1;' if element is highlighted_element else ''};4;34m{title}\033[m"
 
     def render_emphasis(self, element) -> str:
         return f"\033[3m{self.render_children(element)}\033[23m"
@@ -190,7 +198,7 @@ class TerminalRenderer(marko.Renderer):
         elif element.lang == "demo":
             lexer = get_lexer_by_name("bash", stripall=True)
             code = highlight(raw_code, lexer, FORMATTER)
-            title = "Demo (press Enter to run)"
+            title = "Demo (press Enter to run)" if element is highlighted_element else "Demo"
             heading = f"\033[1;32;7m{title:^{TerminalRenderer.width}}\033[22;27m"
             return heading + "\n" + boxed("\033[33;1m$\033[m " + code, line_numbers=False, box_color="\033[32m", min_width=TerminalRenderer.width) + "\n\n"
 
@@ -214,44 +222,40 @@ class TerminalRenderer(marko.Renderer):
     def render_paragraph(self, element) -> str:
         return f"{self.render_children(element).strip()}\n\n"
 
-def get_demos(ast) -> list:
-    if isinstance(ast, (marko.block.CodeBlock, marko.block.FencedCode)):
-        if ast.lang == "demo":
+def get_demos(element) -> list:
+    if isinstance(element, (marko.block.CodeBlock, marko.block.FencedCode)):
+        if element.lang == "demo":
             def demo():
-                raw_code = ast.children[0].children
+                raw_code = element.children[0].children
                 subprocess.run(
                     ["bash", "-c", raw_code.strip()],
                     cwd=os.path.dirname(TerminalRenderer.relative_filename) or '.',
                 )
-            return [demo]
-    elif isinstance(ast, marko.inline.Link):
+            return [Demo(element, demo)]
+    elif isinstance(element, marko.inline.Link):
         def demo():
-            webbrowser.open(ast.dest, new=1)
-        return [demo]
-    elif isinstance(ast, marko.inline.Image):
-        if not ast.children: return []
-        path = ast.dest if os.path.isabs(ast.dest) else os.path.join(os.path.dirname(TerminalRenderer.relative_filename), ast.dest)
+            webbrowser.open(element.dest, new=1)
+        return [Demo(element, demo)]
+    elif isinstance(element, marko.inline.Image):
+        path = element.dest if os.path.isabs(element.dest) else os.path.join(os.path.dirname(TerminalRenderer.relative_filename), element.dest)
         if is_image(path):
-            return [lambda: PIL.Image.open(path).show()]
-    elif isinstance(ast, marko.element.Element):
-        if hasattr(ast, "children"):
+            return [Demo(element, lambda: PIL.Image.open(path).show())]
+    elif isinstance(element, marko.element.Element):
+        if hasattr(element, "children"):
             demos = []
-            for child in ast.children:
+            for child in element.children:
                 demos += get_demos(child)
             return demos
         else:
-            raise ValueError(f"No children! {ast}")
-    elif not isinstance(ast, str):
-        raise ValueError(f"Not an element! {ast}")
+            raise ValueError(f"No children! {element}")
+    elif not isinstance(element, str):
+        raise ValueError(f"Not an element! {element}")
     return []
 
 markdown = marko.Markdown(renderer=TerminalRenderer)
-def render_markdown(slide:Slide) -> str:
-    TerminalRenderer.relative_filename = slide.filename
-    ast = markdown.parse(slide.text)
-    return markdown.render(ast)
 
-def show_slide(bt:btui.BTUI, slides:[Slide], index:int, *, scroll=0, raw=False) -> int:
+def show_slide(bt:btui.BTUI, slides:[Slide], index:int, *, scroll=0, raw=False, demo_index=0) -> int:
+    global highlighted_element
     slide = slides[index]
     with bt.buffered():
         bt.clear()
@@ -265,10 +269,16 @@ def show_slide(bt:btui.BTUI, slides:[Slide], index:int, *, scroll=0, raw=False) 
             return
 
         if slide.text.strip():
+            TerminalRenderer.relative_filename = slide.filename
+            ast = markdown.parse(slide.text)
+
+            demos = get_demos(ast)
+            highlighted_element = demos[demo_index].element if demos else None
+
             TerminalRenderer.width = bt.width//4
-            rendered = render_markdown(slide)
+            rendered = markdown.render(ast)
             TerminalRenderer.width = max(render_width(line) for line in rendered.splitlines())
-            rendered = render_markdown(slide)
+            rendered = markdown.render(ast)
 
             lines = rendered.splitlines()
             width = max(render_width(line) for line in lines)
@@ -321,7 +331,7 @@ def present(slides:[str]):
                 demo_index = 0
 
             if redraw:
-                render_height = show_slide(bt, slides, index, scroll=scroll, raw=raw)
+                render_height = show_slide(bt, slides, index, scroll=scroll, raw=raw, demo_index=demo_index)
                 draw_time(bt, start_time)
                 redraw = False
                 prev_index = index
@@ -361,9 +371,20 @@ def present(slides:[str]):
                 if len(demos) > 0:
                     with bt.disabled():
                         bt.flush()
+                        # Clear screen and move to top:
+                        print('\033[2J\033[H', flush=True, end="")
                         demos[demo_index]()
                         if demo_index + 1 < len(demos):
                             demo_index += 1
+                        input("\n\033[2mPress Enter to continue...\033[m")
+                    redraw = True
+            elif key == 'Tab':
+                if demo_index + 1 < len(demos):
+                    demo_index += 1
+                    redraw = True
+            elif key == 'Shift-Tab':
+                if demo_index > 0:
+                    demo_index -= 1
                     redraw = True
             elif key == '`':
                 raw = not raw

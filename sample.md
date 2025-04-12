@@ -58,6 +58,16 @@ and press **Enter** to run the demo
 seq 1000 | less
 ```
 
+Another demo:
+
+```demo
+for i in `seq 5`; do
+    echo "$i"
+    sleep 1
+done
+echo "DONE"
+```
+
 ---------------------------------------------------------
 
 # Syntax Highlighting
