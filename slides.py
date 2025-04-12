@@ -163,7 +163,7 @@ class TerminalRenderer(marko.Renderer):
 
     def render_link(self, element) -> str:
         title = self.render_children(element) or element.dest
-        return f"\033[{'1;' if element is highlighted_element else ''};4;34m{title}\033[m"
+        return f"\033[{'1;' if element is highlighted_element else ''}4;34m{title}\033[m"
 
     def render_emphasis(self, element) -> str:
         return f"\033[3m{self.render_children(element)}\033[23m"
@@ -376,7 +376,6 @@ def present(slides:[str]):
                         demos[demo_index]()
                         if demo_index + 1 < len(demos):
                             demo_index += 1
-                        input("\n\033[2mPress Enter to continue...\033[m")
                     redraw = True
             elif key == 'Tab':
                 if demo_index + 1 < len(demos):
