@@ -7,8 +7,6 @@ import btui.Python.btui as btui
 import climage
 import marko
 import os
-# import pyfiglet
-# import pyfiglet.fonts
 import re
 import subprocess
 
@@ -25,6 +23,8 @@ Slide = namedtuple("Slide", ("filename", "text"))
 
 FORMATTER = Terminal256Formatter(style="native")
 BULLET = "\033[1m\033(0`\033(B\033[m"
+
+terminal_width, terminal_height = 0, 0
 
 def render_width(text:str)->int:
     # Strip out escape sequences that are used:
@@ -90,7 +90,7 @@ class TerminalRenderer(marko.Renderer):
                 child.bullet = "  "+BULLET+" "
                 child_rendered = self.render(child).strip('\n')
                 lines.append(child_rendered)
-        return "\n\n".join(lines) + "\n\n"
+        return "\n".join(lines) + "\n\n"
     
     def render_list_item(self, element) -> str:
         indent = "  "*self._list_depth
@@ -102,7 +102,7 @@ class TerminalRenderer(marko.Renderer):
     def render_image(self, element) -> str:
         path = element.dest if os.path.isabs(element.dest) else os.path.join(os.path.dirname(self.relative_filename), element.dest)
         if any(path.lower().endswith(ext) for ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')):
-            output = climage.convert(path, width=40, is_truecolor=True, is_256color=False, is_unicode=True)
+            output = climage.convert(path, width=max(40, 2*terminal_width//3), is_truecolor=True, is_256color=False, is_unicode=True)
             return output + "\n"
 
         try:
@@ -264,6 +264,7 @@ def show_slide(bt:btui.BTUI, slides:[Slide], index:int, *, scroll=0, raw=False) 
     return height
 
 def present(slides:[str]):
+    global terminal_width, terminal_height
     redraw = True
     index, prev_index = 0, None
     raw = False
@@ -271,6 +272,7 @@ def present(slides:[str]):
     render_height = 0
     search = ''
     with btui.open() as bt:
+        terminal_width, terminal_height = bt.width, bt.height
         key = None
         while key != 'q' and key != 'Ctrl-c':
             if index != prev_index:
@@ -325,6 +327,7 @@ def present(slides:[str]):
                 raw = not raw
                 redraw = True
             elif key == "Resize":
+                terminal_width, terminal_height = bt.width, bt.height
                 redraw = True
             elif key in '0123456789':
                 bt.move(1, bt.height)
