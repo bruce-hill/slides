@@ -108,7 +108,7 @@ You can scroll up/down with **Up**/**Down**, the **mouse wheel**, or **Ctrl-U**/
 
 # Images
 
-![sxiv -f -sf](thumbsup.jpg)
+![](thumbsup.jpg)
 
 Supported! (kinda)
 
