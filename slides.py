@@ -305,9 +305,9 @@ def draw_time(bt:btui.BTUI, start_time:float):
     bt.move(0, terminal_height-1)
     with bt.attributes("dim"):
         if elapsed >= 3600:
-            bt.write(f"{int(elapsed//3600)}:{int((elapsed % 3600)//60):02}:{int(elapsed % 60):02}")
+            bt.write(f"    {int(elapsed//3600)}:{int((elapsed % 3600)//60):02}:{int(elapsed % 60):02}")
         else:
-            bt.write(f"{int(elapsed//60):2}:{int(elapsed % 60):02}")
+            bt.write(f"    {int(elapsed//60):2}:{int(elapsed % 60):02}")
 
 def present(slides:[str]):
     global terminal_width, terminal_height
