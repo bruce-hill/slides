@@ -93,12 +93,12 @@ class TerminalRenderer(marko.Renderer):
         if element.ordered:
             for num, child in enumerate(element.children, element.start):
                 child.bullet = f"\033[1m{num:>2}.\033[m "
-                child_rendered = self.render(child).strip('\n')
+                child_rendered = self.render(child).strip('\n').replace('\n', '\n    ')
                 lines.append(child_rendered)
         else:
             for child in element.children:
                 child.bullet = "  "+BULLET+" "
-                child_rendered = self.render(child).strip('\n')
+                child_rendered = self.render(child).strip('\n').replace('\n', '\n    ')
                 lines.append(child_rendered)
         return "\n".join(lines) + "\n\n"
     
