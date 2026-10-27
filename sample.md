@@ -4,6 +4,8 @@
 
 *by Bruce Hill*
 
+![Tomo file](../tomo/examples/learnxiny.tm)
+
 **slides** is a terminal slide presenter.
 
 You can see the slide number in the bottom left corner.

@@ -20,6 +20,7 @@ from pygments import highlight
 from pygments.formatters import Terminal256Formatter
 from pygments.lexers import get_lexer_by_name
 from pygments.util import ClassNotFound
+from tomo import TomoLexer, MyStyle
 from wcwidth import wcswidth
 
 Slide = namedtuple("Slide", ("filename", "text"))
@@ -27,7 +28,7 @@ class Demo(namedtuple("_Demo", ("element", "demo"))):
     __slots__ = ()
     def __call__(self): self.demo()
 
-FORMATTER = Terminal256Formatter(style="native")
+FORMATTER = Terminal256Formatter(style=MyStyle)
 BULLET = "\033[1m\033(0`\033(B\033[m"
 
 terminal_width, terminal_height = 0, 0
@@ -153,7 +154,10 @@ class TerminalRenderer(marko.Renderer):
         try:
             lexer = get_lexer_by_name(extension, stripall=True)
         except ClassNotFound:
-            code = contents
+            if extension == "tm":
+                code = highlight(contents, TomoLexer(), FORMATTER)
+            else:
+                code = contents
         else:
             code = highlight(contents, lexer, FORMATTER)
 
@@ -207,7 +211,8 @@ class TerminalRenderer(marko.Renderer):
         try:
             lexer = get_lexer_by_name(element.lang, stripall=True)
         except ClassNotFound:
-            pass
+            if element.lang == "tomo":
+                code = highlight(code, TomoLexer(), FORMATTER)
         else:
             code = highlight(code, lexer, FORMATTER)
 
