@@ -1,0 +1,117 @@
+<!--
+  Nomsu (https://nomsu.bruce-hill.com) lexer for chroma.
+
+  Covers "#" comments at the start of a line (with their indented
+  continuation lines), "//" comments, section dividers, $variables and
+  $(action vars), single-line and indented ("...") multi-line text with
+  \$var, \(expr), \[list], \{dict} interpolations and escapes, numbers,
+  a small set of common action words highlighted as keywords, and the
+  operator and punctuation characters.
+-->
+<lexer>
+  <config>
+    <name>Nomsu</name>
+    <alias>nomsu</alias>
+    <alias>nom</alias>
+    <filename>*.nom</filename>
+    <mime_type>text/x-nomsu</mime_type>
+  </config>
+  <rules>
+    <state name="root">
+      <rule pattern="^#![^\n]*"><token type="CommentHashbang"/></rule>
+      <!-- a line-start comment continues over lines indented deeper than it -->
+      <rule pattern="^([ \t]*)#[^\n]*(?:\n(?:[ \t]*(?=\n)|\1[ \t]+[^\n]*))*"><token type="CommentMultiline"/></rule>
+      <rule pattern="//[^\n]*"><token type="CommentSingle"/></rule>
+      <rule pattern="^[ \t]*~{3,}[ \t]*$"><token type="CommentSpecial"/></rule>
+
+      <!-- indented multi-line text: ("  at the end of a line, closed by ") on its own line -->
+      <rule pattern="(\(&quot;)([ \t]*\n)((?:[^\n]*\n)*?)([ \t]*&quot;\))">
+        <bygroups>
+          <token type="LiteralStringDouble"/>
+          <token type="TextWhitespace"/>
+          <usingself state="text_body"/>
+          <token type="LiteralStringDouble"/>
+        </bygroups>
+      </rule>
+      <rule pattern="&quot;"><token type="LiteralStringDouble"/><push state="text"/></rule>
+
+      <rule pattern="\$\("><token type="NameVariable"/><push state="action_var"/></rule>
+      <rule pattern="\$(?:[A-Za-z0-9_-]|[^\x00-\x7f])*"><token type="NameVariable"/></rule>
+
+      <rule pattern="-?(?:0x[0-9a-fA-F]+|\d+(?:\.\d+)?|\.\d+)(?![A-Za-z0-9_])"><token type="LiteralNumber"/></rule>
+
+      <rule pattern="\b(?:compiles to|parses as|all compile to|all parse as|means|all mean|external)\b"><token type="KeywordDeclaration"/></rule>
+      <rule pattern="\b(?:if|else|unless|when|for|in|repeat|while|until|do|then|otherwise|return|fail|try|test|use|go to|stop|continue|with|is|as|lua)\b"><token type="Keyword"/></rule>
+      <rule pattern="\b(?:and|or|not)\b"><token type="OperatorWord"/></rule>
+      <rule pattern="\b(?:yes|no|nil|none)\b"><token type="KeywordConstant"/></rule>
+      <rule pattern="(?:[A-Za-z_]|[^\x00-\x7f])(?:[A-Za-z0-9_]|[^\x00-\x7f])*"><token type="Name"/></rule>
+
+      <rule pattern="\.\."><token type="Operator"/></rule>
+      <rule pattern="[`~!|%#@^&amp;*_+=&lt;&gt;?'/-]+"><token type="Operator"/></rule>
+      <rule pattern="[()\[\]{},:;.]"><token type="Punctuation"/></rule>
+      <rule pattern="\n"><token type="TextWhitespace"/></rule>
+      <rule pattern="[ \t]+"><token type="TextWhitespace"/></rule>
+      <rule pattern="."><token type="Text"/></rule>
+    </state>
+
+    <!-- $(...) action variables -->
+    <state name="action_var">
+      <rule pattern="\)"><token type="NameVariable"/><pop depth="1"/></rule>
+      <rule><include state="root"/></rule>
+    </state>
+
+    <!-- interpolations shared by single-line and multi-line text -->
+    <state name="interp">
+      <rule pattern="\\\$\((?!\))"><token type="LiteralStringInterpol"/><push state="interp_paren"/></rule>
+      <rule pattern="\\\$(?:[A-Za-z0-9_-]|[^\x00-\x7f])*"><token type="LiteralStringInterpol"/></rule>
+      <rule pattern="\\\("><token type="LiteralStringInterpol"/><push state="interp_paren"/></rule>
+      <rule pattern="\\\["><token type="LiteralStringInterpol"/><push state="interp_bracket"/></rule>
+      <rule pattern="\\\{"><token type="LiteralStringInterpol"/><push state="interp_brace"/></rule>
+      <rule pattern="\\:"><token type="LiteralStringInterpol"/></rule>
+      <rule pattern="\\(?:x[0-9a-fA-F]{1,2}|[0-9]{1,3}|[^\n])"><token type="LiteralStringEscape"/></rule>
+    </state>
+    <state name="interp_paren">
+      <rule pattern="\("><token type="Punctuation"/><push state="nested_paren"/></rule>
+      <rule pattern="\)"><token type="LiteralStringInterpol"/><pop depth="1"/></rule>
+      <rule><include state="root"/></rule>
+    </state>
+    <state name="nested_paren">
+      <rule pattern="\("><token type="Punctuation"/><push/></rule>
+      <rule pattern="\)"><token type="Punctuation"/><pop depth="1"/></rule>
+      <rule><include state="root"/></rule>
+    </state>
+    <state name="interp_bracket">
+      <rule pattern="\["><token type="Punctuation"/><push state="nested_bracket"/></rule>
+      <rule pattern="\]"><token type="LiteralStringInterpol"/><pop depth="1"/></rule>
+      <rule><include state="root"/></rule>
+    </state>
+    <state name="nested_bracket">
+      <rule pattern="\["><token type="Punctuation"/><push/></rule>
+      <rule pattern="\]"><token type="Punctuation"/><pop depth="1"/></rule>
+      <rule><include state="root"/></rule>
+    </state>
+    <state name="interp_brace">
+      <rule pattern="\{"><token type="Punctuation"/><push state="nested_brace"/></rule>
+      <rule pattern="\}"><token type="LiteralStringInterpol"/><pop depth="1"/></rule>
+      <rule><include state="root"/></rule>
+    </state>
+    <state name="nested_brace">
+      <rule pattern="\{"><token type="Punctuation"/><push/></rule>
+      <rule pattern="\}"><token type="Punctuation"/><pop depth="1"/></rule>
+      <rule><include state="root"/></rule>
+    </state>
+
+    <state name="text">
+      <rule pattern="&quot;"><token type="LiteralStringDouble"/><pop depth="1"/></rule>
+      <rule><include state="interp"/></rule>
+      <rule pattern="[^&quot;\\\n]+"><token type="LiteralStringDouble"/></rule>
+      <rule pattern="\n"><token type="LiteralStringDouble"/><pop depth="1"/></rule>
+    </state>
+    <state name="text_body">
+      <rule><include state="interp"/></rule>
+      <rule pattern="^[ \t]*\.\."><token type="LiteralStringDouble"/></rule>
+      <rule pattern="[^\\\n]+"><token type="LiteralStringDouble"/></rule>
+      <rule pattern="[\\\n]"><token type="LiteralStringDouble"/></rule>
+    </state>
+  </rules>
+</lexer>

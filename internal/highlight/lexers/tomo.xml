@@ -1,0 +1,218 @@
+<!--
+  Tomo (https://tomo.bruce-hill.com) lexer for chroma.
+
+  Covers comments, keywords, doctest lines (">> expr" / "= expected"), the
+  three quote styles including indented multi-line text, $-interpolation
+  ($name, $name.field, $(expr)), customizable $-text with any interpolation
+  character and delimiter (including nested ([{< pairs), path literals,
+  numbers with _ separators and the %/f/e suffixes, and operators.
+-->
+<lexer>
+  <config>
+    <name>Tomo</name>
+    <alias>tomo</alias>
+    <alias>tm</alias>
+    <filename>*.tm</filename>
+    <mime_type>text/x-tomo</mime_type>
+  </config>
+  <rules>
+    <state name="root">
+      <rule pattern="#[^\n]*"><token type="CommentSingle"/></rule>
+      <rule pattern="^[ \t]*!link[^\n]*"><token type="CommentPreproc"/></rule>
+
+      <!-- doctests: ">> expr" logs a value, "= value" is the expected output -->
+      <rule pattern="^([ \t]*)(&gt;&gt;)">
+        <bygroups><token type="TextWhitespace"/><token type="GenericPrompt"/></bygroups>
+      </rule>
+      <rule pattern="^([ \t]*)(=)([ \t][^\n]*)">
+        <bygroups><token type="TextWhitespace"/><token type="GenericPrompt"/><token type="GenericOutput"/></bygroups>
+      </rule>
+
+      <!--
+        Indented multi-line text: a lone quote at the end of a line, then
+        lines indented past the opening line (or blank, or "..." continuations
+        at the same indentation), closed by the quote at the opening
+        indentation. The code before the quote is re-lexed as root.
+      -->
+      <rule pattern="^((?&gt;[ \t]*))((?:[^&quot;'`\n]|&quot;[^&quot;\n]*&quot;|'[^'\n]*'|`[^`\n]*`)*?)(&quot;)(\n(?&gt;\1[ \t][^\n]*\n|\1\.\.[^\n]*\n|[ \t]*\n)*)(\1&quot;)">
+        <bygroups>
+          <token type="TextWhitespace"/>
+          <usingself state="root"/>
+          <token type="LiteralStringDouble"/>
+          <usingself state="dq_body"/>
+          <token type="LiteralStringDouble"/>
+        </bygroups>
+      </rule>
+      <rule pattern="^((?&gt;[ \t]*))((?:[^&quot;'`\n]|&quot;[^&quot;\n]*&quot;|'[^'\n]*'|`[^`\n]*`)*?)(')(\n(?&gt;\1[ \t][^\n]*\n|\1\.\.[^\n]*\n|[ \t]*\n)*)(\1')">
+        <bygroups>
+          <token type="TextWhitespace"/>
+          <usingself state="root"/>
+          <token type="LiteralStringSingle"/>
+          <usingself state="sq_body"/>
+          <token type="LiteralStringSingle"/>
+        </bygroups>
+      </rule>
+      <rule pattern="^((?&gt;[ \t]*))((?:[^&quot;'`\n]|&quot;[^&quot;\n]*&quot;|'[^'\n]*'|`[^`\n]*`)*?)(`)(\n(?&gt;\1[ \t][^\n]*\n|\1\.\.[^\n]*\n|[ \t]*\n)*)(\1`)">
+        <bygroups>
+          <token type="TextWhitespace"/>
+          <usingself state="root"/>
+          <token type="LiteralStringBacktick"/>
+          <usingself state="sq_body"/>
+          <token type="LiteralStringBacktick"/>
+        </bygroups>
+      </rule>
+
+      <!-- customizable $-text: $[lang][interp-char]<delim>...<delim> -->
+      <rule pattern="(\$[A-Za-z_0-9]*)([~!@#%^&amp;*+=\\?]|\$)([&quot;'`|/;])((?:\\.|(?!\3)[^\n])*)(\3)">
+        <bygroups>
+          <token type="NameTag"/>
+          <token type="LiteralStringInterpol"/>
+          <token type="LiteralStringOther"/>
+          <token type="LiteralStringOther"/>
+          <token type="LiteralStringOther"/>
+        </bygroups>
+      </rule>
+      <rule pattern="(\$[A-Za-z_0-9]*)([&quot;'`|/;])((?:\\.|(?!\2)[^\n])*)(\2)">
+        <bygroups>
+          <token type="NameTag"/>
+          <token type="LiteralStringOther"/>
+          <usingself state="dq_body"/>
+          <token type="LiteralStringOther"/>
+        </bygroups>
+      </rule>
+      <rule pattern="(\$[A-Za-z_0-9]*)([~!@#%^&amp;*+=\\?$]?)(\()">
+        <bygroups><token type="NameTag"/><token type="LiteralStringInterpol"/><token type="LiteralStringOther"/></bygroups>
+        <push state="paren_text"/>
+      </rule>
+      <rule pattern="(\$[A-Za-z_0-9]*)([~!@#%^&amp;*+=\\?$]?)(\[)">
+        <bygroups><token type="NameTag"/><token type="LiteralStringInterpol"/><token type="LiteralStringOther"/></bygroups>
+        <push state="bracket_text"/>
+      </rule>
+      <rule pattern="(\$[A-Za-z_0-9]*)([~!@#%^&amp;*+=\\?$]?)(\{)">
+        <bygroups><token type="NameTag"/><token type="LiteralStringInterpol"/><token type="LiteralStringOther"/></bygroups>
+        <push state="brace_text"/>
+      </rule>
+      <rule pattern="(\$[A-Za-z_0-9]*)([~!@#%^&amp;*+=\\?$]?)(&lt;)">
+        <bygroups><token type="NameTag"/><token type="LiteralStringInterpol"/><token type="LiteralStringOther"/></bygroups>
+        <push state="angle_text"/>
+      </rule>
+
+      <!-- path literals: ~/x, ./x, ../x, /x; run until whitespace or an unmatched ")" -->
+      <rule pattern="(?:(?:~|\.\.?)/|(?&lt;![\w)\]&quot;'`])/(?=[^\s/*)])|(?&lt;=\()/(?=\))|~(?=[\s)]))(?:\\.|\([^)\n]*\)|[^\s)\\])*"><token type="LiteralStringOther"/></rule>
+
+      <rule pattern="&quot;"><token type="LiteralStringDouble"/><push state="dq"/></rule>
+      <rule pattern="'"><token type="LiteralStringSingle"/><push state="sq"/></rule>
+      <rule pattern="`"><token type="LiteralStringBacktick"/><push state="bt"/></rule>
+
+      <rule pattern="0x[0-9a-fA-F_]+"><token type="LiteralNumberHex"/></rule>
+      <rule pattern="0b[01_]+"><token type="LiteralNumberBin"/></rule>
+      <rule pattern="0o[0-7_]+"><token type="LiteralNumberOct"/></rule>
+      <rule pattern="\d[\d_]*\.\d[\d_]*(?:e-?\d[\d_]*)?(?:%|f|deg)?|\d[\d_]*(?:(?:e-?\d[\d_]*|f|deg)\b|%)"><token type="LiteralNumberFloat"/></rule>
+      <rule pattern="\d[\d_]*"><token type="LiteralNumberInteger"/></rule>
+
+      <rule pattern="(func)(\s+)([A-Za-z_]\w*)(?=\()">
+        <bygroups><token type="KeywordDeclaration"/><token type="TextWhitespace"/><token type="NameFunction"/></bygroups>
+      </rule>
+      <rule pattern="(use)(\s+)([^\n;]+)">
+        <bygroups><token type="KeywordNamespace"/><token type="TextWhitespace"/><token type="LiteralStringOther"/></bygroups>
+      </rule>
+      <rule pattern="\b(?:func|struct|enum|lang|convert|extend|extern|external)\b"><token type="KeywordDeclaration"/></rule>
+      <rule pattern="\b(?:if|else|unless|when|then|for|while|do|repeat|in|return|skip|stop|break|continue|pass|defer|assert|inline|cached|opaque|C_code)\b"><token type="Keyword"/></rule>
+      <rule pattern="\b(?:and|or|xor|not|mod|mod1|_min_|_max_)\b"><token type="OperatorWord"/></rule>
+      <rule pattern="\b(?:yes|no|none)\b"><token type="KeywordConstant"/></rule>
+      <rule pattern="\b[A-Z][A-Za-z0-9_]*\b"><token type="NameClass"/></rule>
+      <rule pattern="[A-Za-z_]\w*(?=\()"><token type="NameFunction"/></rule>
+      <rule pattern="[A-Za-z_]\w*"><token type="Name"/></rule>
+
+      <rule pattern=":=|\+\+=|\+\+|-&gt;|&lt;&lt;|&gt;&gt;|&lt;&gt;|[-+*/^&lt;&gt;=!]=|[-+*/^&lt;&gt;=!?@&amp;:%]|\.\."><token type="Operator"/></rule>
+      <rule pattern="[()\[\]{},;.]"><token type="Punctuation"/></rule>
+      <rule pattern="\n"><token type="TextWhitespace"/></rule>
+      <rule pattern="[ \t]+"><token type="TextWhitespace"/></rule>
+      <rule pattern="."><token type="Text"/></rule>
+    </state>
+
+    <!-- $-interpolation shared by double-quoted and $-text bodies -->
+    <state name="interp">
+      <rule pattern="\$\("><token type="LiteralStringInterpol"/><push state="interp_paren"/></rule>
+      <rule pattern="\$[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*"><token type="LiteralStringInterpol"/></rule>
+    </state>
+    <state name="interp_paren">
+      <rule pattern="\("><token type="Punctuation"/><push state="interp_nested"/></rule>
+      <rule pattern="\)"><token type="LiteralStringInterpol"/><pop depth="1"/></rule>
+      <rule><include state="root"/></rule>
+    </state>
+    <state name="interp_nested">
+      <rule pattern="\("><token type="Punctuation"/><push/></rule>
+      <rule pattern="\)"><token type="Punctuation"/><pop depth="1"/></rule>
+      <rule><include state="root"/></rule>
+    </state>
+    <state name="escape">
+      <rule pattern="\\(?:x[0-9a-fA-F]{2}|\d{3}|\{[^}\n]*\}|\[[^\]\n]*\]|.)"><token type="LiteralStringEscape"/></rule>
+    </state>
+
+    <state name="dq">
+      <rule pattern="&quot;"><token type="LiteralStringDouble"/><pop depth="1"/></rule>
+      <rule><include state="escape"/></rule>
+      <rule><include state="interp"/></rule>
+      <rule pattern="[^&quot;\\$\n]+"><token type="LiteralStringDouble"/></rule>
+      <rule pattern="\$"><token type="LiteralStringDouble"/></rule>
+      <rule pattern="\n"><token type="LiteralStringDouble"/><pop depth="1"/></rule>
+    </state>
+    <state name="dq_body">
+      <rule><include state="escape"/></rule>
+      <rule><include state="interp"/></rule>
+      <rule pattern="^[ \t]*\.\.+"><token type="LiteralStringDouble"/></rule>
+      <rule pattern="[^\\$\n]+"><token type="LiteralStringDouble"/></rule>
+      <rule pattern="[$\n]"><token type="LiteralStringDouble"/></rule>
+    </state>
+    <state name="sq">
+      <rule pattern="'"><token type="LiteralStringSingle"/><pop depth="1"/></rule>
+      <rule><include state="escape"/></rule>
+      <rule pattern="[^'\\\n]+"><token type="LiteralStringSingle"/></rule>
+      <rule pattern="\n"><token type="LiteralStringSingle"/><pop depth="1"/></rule>
+    </state>
+    <state name="sq_body">
+      <rule><include state="escape"/></rule>
+      <rule pattern="^[ \t]*\.\.+"><token type="LiteralStringSingle"/></rule>
+      <rule pattern="[^\\\n]+"><token type="LiteralStringSingle"/></rule>
+      <rule pattern="\n"><token type="LiteralStringSingle"/></rule>
+    </state>
+    <state name="bt">
+      <rule pattern="`"><token type="LiteralStringBacktick"/><pop depth="1"/></rule>
+      <rule><include state="escape"/></rule>
+      <rule pattern="[^`\\\n]+"><token type="LiteralStringBacktick"/></rule>
+      <rule pattern="\n"><token type="LiteralStringBacktick"/><pop depth="1"/></rule>
+    </state>
+
+    <!-- $-text delimited by matching pairs; nesting is part of the text -->
+    <state name="paren_text">
+      <rule pattern="\("><token type="LiteralStringOther"/><push/></rule>
+      <rule pattern="\)"><token type="LiteralStringOther"/><pop depth="1"/></rule>
+      <rule><include state="pair_text"/></rule>
+      <rule pattern="[^()\\$\n]+"><token type="LiteralStringOther"/></rule>
+    </state>
+    <state name="bracket_text">
+      <rule pattern="\["><token type="LiteralStringOther"/><push/></rule>
+      <rule pattern="\]"><token type="LiteralStringOther"/><pop depth="1"/></rule>
+      <rule><include state="pair_text"/></rule>
+      <rule pattern="[^\[\]\\$\n]+"><token type="LiteralStringOther"/></rule>
+    </state>
+    <state name="brace_text">
+      <rule pattern="\{"><token type="LiteralStringOther"/><push/></rule>
+      <rule pattern="\}"><token type="LiteralStringOther"/><pop depth="1"/></rule>
+      <rule><include state="pair_text"/></rule>
+      <rule pattern="[^{}\\$\n]+"><token type="LiteralStringOther"/></rule>
+    </state>
+    <state name="angle_text">
+      <rule pattern="&lt;"><token type="LiteralStringOther"/><push/></rule>
+      <rule pattern="&gt;"><token type="LiteralStringOther"/><pop depth="1"/></rule>
+      <rule><include state="pair_text"/></rule>
+      <rule pattern="[^&lt;&gt;\\$\n]+"><token type="LiteralStringOther"/></rule>
+    </state>
+    <state name="pair_text">
+      <rule><include state="escape"/></rule>
+      <rule><include state="interp"/></rule>
+      <rule pattern="[$\n]"><token type="LiteralStringOther"/></rule>
+    </state>
+  </rules>
+</lexer>

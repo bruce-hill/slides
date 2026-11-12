@@ -60,6 +60,6 @@ to install to a location other than `~/.local/bin`. You can also install with
 cmd/slides/          Command line entry point
 internal/deck/       Loading files and splitting them into slides
 internal/render/     Rendering markdown (and images) as terminal text
-internal/highlight/  Syntax highlighting, including a Tomo lexer
+internal/highlight/  Syntax highlighting, with Tomo, Nomsu and BP lexers (lexers/*.xml)
 internal/ui/         The Bubble Tea presenter (keys, scrolling, status bar)
 ```

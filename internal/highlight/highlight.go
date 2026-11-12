@@ -2,13 +2,28 @@
 package highlight
 
 import (
+	"embed"
 	"fmt"
+	"io/fs"
 	"strings"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
 )
+
+// Lexers for languages that chroma doesn't have built in
+//
+//go:embed lexers/*.xml
+var bundled embed.FS
+
+func init() {
+	sub, _ := fs.Sub(bundled, "lexers")
+	files, _ := fs.Glob(sub, "*.xml")
+	for _, f := range files {
+		lexers.Register(chroma.MustNewXMLLexer(sub, f))
+	}
+}
 
 var theme = func() *chroma.Style {
 	style, err := styles.Get("vim").Builder().
@@ -21,6 +36,8 @@ var theme = func() *chroma.Style {
 		Add(chroma.KeywordType, "#61ddb9").
 		Add(chroma.Name, "#fafad0").
 		Add(chroma.NameVariableMagic, "bold #ffffff").
+		Add(chroma.GenericPrompt, "bold #96d2ff").
+		Add(chroma.GenericOutput, "#a0a0a0").
 		Build()
 	if err != nil {
 		panic(err)
