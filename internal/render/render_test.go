@@ -94,6 +94,22 @@ func TestImageFitsSlide(t *testing.T) {
 	}
 }
 
+func TestImageCentered(t *testing.T) {
+	dir := t.TempDir()
+	f, _ := os.Create(filepath.Join(dir, "small.png"))
+	png.Encode(f, image.NewRGBA(image.Rect(0, 0, 10, 10)))
+	f.Close()
+
+	src := []byte("# A title that is wider than the image\n\n![width=10%](small.png)\n")
+	out, _ := Render(Parse(src), Options{Src: src, Dir: dir, TermW: 100, TermH: 40, RunCache: map[ast.Node]string{}})
+	lines := strings.Split(ansi.Strip(out), "\n")
+	title, img := lines[1], lines[4]
+	left, right := len(img)-len(strings.TrimLeft(img, " ")), MaxWidth(title)-ansi.StringWidth(strings.TrimRight(img, " "))
+	if left == 0 || left-right > 1 || right-left > 1 {
+		t.Errorf("image isn't centered under the title (%d columns left, %d right):\n%s\n%s", left, right, title, img)
+	}
+}
+
 func TestViewport(t *testing.T) {
 	dir := t.TempDir()
 	var lines []string

@@ -163,7 +163,13 @@ func (r *renderer) block(n ast.Node) string {
 		}
 		return title
 	case *ast.Paragraph, *ast.TextBlock:
-		return strings.TrimSpace(r.inlines(n))
+		out := strings.TrimSpace(r.inlines(n))
+		// Center images that are on their own, not counting the focus marker after them
+		if img, ok := n.FirstChild().(*ast.Image); ok && img == n.LastChild() && isImage(string(img.Destination)) {
+			indent := strings.Repeat(" ", max(0, (r.width-(MaxWidth(out)-1))/2))
+			out = indent + strings.ReplaceAll(out, "\n", "\n"+indent)
+		}
+		return out
 	case *ast.List:
 		sep := "\n\n"
 		if n.IsTight {
