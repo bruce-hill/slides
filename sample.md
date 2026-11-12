@@ -122,7 +122,7 @@ You can scroll up/down with **Up**/**Down**, the **mouse wheel**, or **Ctrl-U**/
 
 ![](thumbsup.jpg)
 
-Supported! (kinda)
+Supported!
 
 ---------------------------------------------------------
 

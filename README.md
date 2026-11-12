@@ -17,7 +17,9 @@ file passed on the command line is shown as a single syntax-highlighted slide.
 - ` ```run ` code blocks are run in bash and show their output
 - ` ```demo ` code blocks are run interactively when you press **Enter**
 - Images (`![](image.png)`) are drawn in the terminal; `![width=50%](...)` or
-  `![height=50%](...)` control their size
+  `![height=50%](...)` control their size. In [kitty](https://sw.kovidgoyal.net/kitty/),
+  images are shown at full resolution with the kitty graphics protocol; other
+  terminals get a lower resolution version made of colored characters
 - Other files can be embedded with `![title](file.txt)`
 - Links can be opened with **Enter**
 

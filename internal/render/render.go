@@ -62,6 +62,7 @@ type Options struct {
 	TermW, TermH int
 	Focused      ast.Node            // The focused demo, link, or image
 	RunCache     map[ast.Node]string // Output of ```run blocks
+	Kitty        *Kitty              // If set, images use the kitty graphics protocol
 }
 
 type renderer struct {
@@ -262,30 +263,47 @@ func (r *renderer) image(n *ast.Image) string {
 		if err != nil {
 			return wrap("31;1", "22;39", fmt.Sprintf("<Couldn't load image %s: %v>", n.Destination, err))
 		}
+		// Half-block characters show two square pixels per cell
+		cellW, cellH := 1, 2
+		if r.Kitty != nil {
+			cellW, cellH = r.Kitty.CellW, r.Kitty.CellH
+		}
 		w, h := img.Bounds().Dx(), img.Bounds().Dy()
-		// Each character cell holds two pixels, stacked vertically
-		cols := min(w, max(40, 2*r.TermW/3))
-		rows := cols * h / w / 2
+		rowsFor := func(cols int) int { return cols * cellW * h / (w * cellH) }
+		colsFor := func(rows int) int { return rows * cellH * w / (h * cellW) }
+
+		cols := min(w/cellW, max(40, 2*r.TermW/3))
+		rows := rowsFor(cols)
 		if maxRows := max(20, 2*r.TermH/3); rows > maxRows {
 			rows = maxRows
-			cols = rows * 2 * w / h
+			cols = colsFor(rows)
 		}
 		if m := widthOptRe.FindStringSubmatch(alt); m != nil {
 			pct, _ := strconv.Atoi(m[1])
 			cols = r.TermW * pct / 100
-			rows = cols * h / w / 2
+			rows = rowsFor(cols)
 		}
 		if m := heightOptRe.FindStringSubmatch(alt); m != nil {
 			pct, _ := strconv.Atoi(m[1])
 			rows = r.TermH * pct / 100
-			cols = rows * 2 * w / h
+			cols = colsFor(rows)
 		}
-		out := imageToText(img, max(cols, 1), max(rows, 1))
+		cols, rows = max(cols, 1), max(rows, 1)
+
+		var out string
+		if r.Kitty != nil {
+			out = r.Kitty.Placeholder(path, img, cols, rows)
+		} else {
+			out = imageToText(img, cols, rows)
+		}
 		marker := " "
 		if n == r.Focused {
 			marker = "\x1b[33m*\x1b[m"
 		}
-		return strings.Replace(out, "\n", marker+"\n", 1)
+		if first, rest, ok := strings.Cut(out, "\n"); ok {
+			return first + marker + "\n" + rest
+		}
+		return out + marker
 	}
 
 	// Embedded text file

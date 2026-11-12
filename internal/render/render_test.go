@@ -1,6 +1,7 @@
 package render
 
 import (
+	"image"
 	"strings"
 	"testing"
 
@@ -34,5 +35,22 @@ func TestRun(t *testing.T) {
 	out := ansi.Strip(Render(Parse(src), Options{Src: src, Dir: ".", TermW: 80, TermH: 24, RunCache: map[ast.Node]string{}}))
 	if !strings.Contains(out, "│ hello") {
 		t.Errorf("run block output is missing:\n%s", out)
+	}
+}
+
+func TestKittyPlaceholder(t *testing.T) {
+	k := NewKitty()
+	img := image.NewRGBA(image.Rect(0, 0, 10, 10))
+	out := k.Placeholder("img.png", img, 4, 3)
+	lines := strings.Split(out, "\n")
+	if len(lines) != 3 || ansi.StringWidth(lines[0]) != 4 {
+		t.Fatalf("got %d lines of width %d, want 3 lines of width 4", len(lines), ansi.StringWidth(lines[0]))
+	}
+	if sent := k.Flush(); !strings.Contains(sent, "U=1") || !strings.Contains(sent, "c=4,r=3") {
+		t.Errorf("image wasn't sent as a 4x3 virtual placement: %q", sent[:min(len(sent), 80)])
+	}
+	k.Placeholder("img.png", img, 4, 3)
+	if sent := k.Flush(); sent != "" {
+		t.Errorf("image was sent twice")
 	}
 }

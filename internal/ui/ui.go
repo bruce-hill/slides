@@ -53,6 +53,7 @@ type model struct {
 	prompt        promptMode
 	input         textinput.Model
 	search        string
+	kitty         *render.Kitty // nil if the terminal doesn't support kitty graphics
 }
 
 // New creates a presenter for the given slides.
@@ -60,6 +61,9 @@ func New(slides []deck.Slide) tea.Model {
 	input := textinput.New()
 	input.Prompt = ""
 	m := &model{slides: slides, start: time.Now(), input: input}
+	if render.KittySupported() {
+		m.kitty = render.NewKitty()
+	}
 	m.loadSlide(0)
 	return m
 }
@@ -103,7 +107,7 @@ func (m *model) rerender() {
 	} else if strings.TrimSpace(text) != "" {
 		out = render.Render(m.doc, render.Options{
 			Src: []byte(text), Dir: m.dir(), TermW: m.width, TermH: m.height,
-			Focused: m.focused(), RunCache: m.runCache,
+			Focused: m.focused(), RunCache: m.runCache, Kitty: m.kitty,
 		})
 	}
 	m.lines = strings.Split(out, "\n")
@@ -220,16 +224,49 @@ func (m *model) openPrompt(mode promptMode, initial string) tea.Cmd {
 	return m.input.Focus()
 }
 
+// resetImages deletes the images sent to the terminal and resends them, which
+// is needed after the terminal has been used by another program.
+func (m *model) resetImages() tea.Cmd {
+	if m.kitty == nil {
+		return nil
+	}
+	deleted := m.kitty.Clear()
+	m.rerender()
+	return tea.Raw(deleted)
+}
+
+func (m *model) quit() tea.Cmd {
+	if m.kitty == nil {
+		return tea.Quit
+	}
+	return tea.Sequence(tea.Raw(m.kitty.Clear()), tea.Quit)
+}
+
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmd := m.update(msg)
+	if m.kitty != nil {
+		if images := m.kitty.Flush(); images != "" {
+			cmd = tea.Sequence(cmd, tea.Raw(images))
+		}
+	}
+	return m, cmd
+}
+
+func (m *model) update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		if w, h, ok := cellSize(); ok && m.kitty != nil {
+			m.kitty.CellW, m.kitty.CellH = w, h
+		}
 		m.rerender()
 	case tickMsg:
-		return m, tick()
+		return tick()
 	case demoDoneMsg:
 		m.moveFocus(1)
-		m.rerender()
+		return m.resetImages()
+	case tea.ResumeMsg:
+		return m.resetImages()
 	case tea.MouseWheelMsg:
 		switch msg.Button {
 		case tea.MouseWheelUp:
@@ -239,11 +276,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.KeyPressMsg:
 		if m.prompt != noPrompt {
-			return m, m.updatePrompt(msg)
+			return m.updatePrompt(msg)
 		}
 		switch key := msg.String(); key {
 		case "q", "ctrl+c":
-			return m, tea.Quit
+			return m.quit()
 		case "left", "k", "backspace":
 			m.loadSlide(m.index - 1)
 		case "right", "j", "space":
@@ -264,9 +301,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.runCache = map[ast.Node]string{}
 			m.rerender()
 		case "ctrl+z":
-			return m, tea.Suspend
+			return tea.Suspend
 		case "enter":
-			return m, m.activate()
+			return m.activate()
 		case "tab":
 			m.moveFocus(1)
 		case "shift+tab":
@@ -275,16 +312,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.raw = !m.raw
 			m.rerender()
 		case "/":
-			return m, m.openPrompt(searchPrompt, "")
+			return m.openPrompt(searchPrompt, "")
 		case "n":
 			m.findSlide(1)
 		case "p":
 			m.findSlide(-1)
 		case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9":
-			return m, m.openPrompt(gotoPrompt, key)
+			return m.openPrompt(gotoPrompt, key)
 		}
 	}
-	return m, nil
+	return nil
 }
 
 func (m *model) View() tea.View {
