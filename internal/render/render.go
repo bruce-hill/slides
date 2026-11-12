@@ -65,6 +65,7 @@ type Options struct {
 	RunCache     map[ast.Node]string // Output of ```run blocks
 	Kitty        *Kitty              // If set, images use the kitty graphics protocol
 	Scrolls      map[ast.Node]int    // Scroll position of each embedded file viewport
+	FileCache    map[string]string   // Highlighted contents of embedded files
 }
 
 // Viewport is an embedded file that is too tall to show all at once, and is
@@ -339,15 +340,21 @@ func (r *renderer) image(n *ast.Image) string {
 	}
 
 	// Embedded text file
-	contents, err := os.ReadFile(path)
-	if err != nil {
-		return wrap("31;1", "22;39", fmt.Sprintf("<File not found: %s>", n.Destination))
+	code, ok := r.FileCache[path]
+	if !ok {
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			return wrap("31;1", "22;39", fmt.Sprintf("<File not found: %s>", n.Destination))
+		}
+		code = highlight.Highlight(string(contents), highlight.LexerFor(strings.TrimPrefix(filepath.Ext(path), ".")))
+		if r.FileCache != nil {
+			r.FileCache[path] = code
+		}
 	}
 	title := r.inlines(n)
 	if title == "" {
 		title = path
 	}
-	code := highlight.Highlight(string(contents), highlight.LexerFor(strings.TrimPrefix(filepath.Ext(path), ".")))
 	return r.heading(title, cyan) + "\n" + r.viewport(n, code, cyan)
 }
 

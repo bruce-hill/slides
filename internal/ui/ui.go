@@ -32,6 +32,7 @@ const (
 type (
 	tickMsg     time.Time
 	demoDoneMsg struct{}
+	wheelMsg    struct{}
 )
 
 type model struct {
@@ -44,6 +45,7 @@ type model struct {
 	focus      int
 	runCache   map[ast.Node]string
 	scrolls    map[ast.Node]int // Scroll positions of embedded file viewports
+	fileCache  map[string]string
 	viewports  []render.Viewport
 	lines      []string
 	lineWidth  int
@@ -55,7 +57,13 @@ type model struct {
 	prompt        promptMode
 	input         textinput.Model
 	search        string
-	kitty         *render.Kitty // nil if the terminal doesn't support kitty graphics
+
+	// Mouse wheel events are added up and handled together, so scrolling
+	// quickly doesn't queue up more redraws than can keep up.
+	wheelDelta   int
+	wheelMouse   tea.Mouse
+	wheelPending bool
+	kitty        *render.Kitty // nil if the terminal doesn't support kitty graphics
 }
 
 // New creates a presenter for the given slides.
@@ -86,6 +94,7 @@ func (m *model) loadSlide(index int) {
 	m.focus = 0
 	m.runCache = map[ast.Node]string{}
 	m.scrolls = map[ast.Node]int{}
+	m.fileCache = map[string]string{}
 	m.scroll = 0
 	m.rerender()
 }
@@ -111,7 +120,7 @@ func (m *model) rerender() {
 	} else if strings.TrimSpace(text) != "" {
 		out, m.viewports = render.Render(m.doc, render.Options{
 			Src: []byte(text), Dir: m.dir(), TermW: m.width, TermH: m.height,
-			Focused: m.focused(), RunCache: m.runCache, Kitty: m.kitty, Scrolls: m.scrolls,
+			Focused: m.focused(), RunCache: m.runCache, Kitty: m.kitty, Scrolls: m.scrolls, FileCache: m.fileCache,
 		})
 	}
 	m.lines = strings.Split(out, "\n")
@@ -300,10 +309,20 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 	case tea.MouseWheelMsg:
 		switch msg.Button {
 		case tea.MouseWheelUp:
-			m.scrollWheel(msg.Mouse(), -1)
+			m.wheelDelta--
 		case tea.MouseWheelDown:
-			m.scrollWheel(msg.Mouse(), 1)
+			m.wheelDelta++
+		default:
+			return nil
 		}
+		m.wheelMouse = msg.Mouse()
+		if !m.wheelPending {
+			m.wheelPending = true
+			return func() tea.Msg { return wheelMsg{} }
+		}
+	case wheelMsg:
+		m.scrollWheel(m.wheelMouse, m.wheelDelta)
+		m.wheelDelta, m.wheelPending = 0, false
 	case tea.KeyPressMsg:
 		if m.prompt != noPrompt {
 			return m.updatePrompt(msg)
