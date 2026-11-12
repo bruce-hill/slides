@@ -1,6 +1,7 @@
 package render
 
 import (
+	"encoding/base64"
 	"fmt"
 	"image"
 	"math/rand/v2"
@@ -79,17 +80,51 @@ func (k *Kitty) transmit(id int, img image.Image, cols, rows int) {
 		draw.CatmullRom.Scale(dst, dst.Bounds(), img, img.Bounds(), draw.Src, nil)
 		img = dst
 	}
-	kitty.EncodeGraphics(&k.pending, img, &kitty.Options{
+	opts := &kitty.Options{
 		Action:           kitty.TransmitAndPut,
-		Transmission:     kitty.Direct,
-		Format:           kitty.PNG,
 		ID:               id,
 		Columns:          cols,
 		Rows:             rows,
 		VirtualPlacement: true,
 		Quiet:            2,
-		Chunk:            true,
-	})
+	}
+	// Sending a large image through the tty is slow for the terminal to
+	// parse, so when it can read our files, just send it a file's name.
+	if !isRemote() {
+		if name, err := writeRGBA(img); err == nil {
+			opts.Transmission, opts.Format = kitty.TempFile, kitty.RGBA
+			opts.ImageWidth, opts.ImageHeight = img.Bounds().Dx(), img.Bounds().Dy()
+			k.pending.WriteString(ansi.KittyGraphics([]byte(base64.StdEncoding.EncodeToString([]byte(name))), opts.Options()...))
+			return
+		}
+	}
+	opts.Transmission, opts.Format, opts.Chunk = kitty.Direct, kitty.PNG, true
+	kitty.EncodeGraphics(&k.pending, img, opts)
+}
+
+func isRemote() bool {
+	return os.Getenv("SSH_CONNECTION") != "" || os.Getenv("SSH_TTY") != ""
+}
+
+// writeRGBA writes an image's raw pixels to a temporary file, which the
+// terminal deletes after reading.
+func writeRGBA(img image.Image) (string, error) {
+	rgba, ok := img.(*image.RGBA)
+	if !ok || rgba.Stride != 4*rgba.Rect.Dx() {
+		rgba = image.NewRGBA(image.Rect(0, 0, img.Bounds().Dx(), img.Bounds().Dy()))
+		draw.Draw(rgba, rgba.Bounds(), img, img.Bounds().Min, draw.Src)
+	}
+	// Kitty only deletes temporary files with this in their name
+	f, err := os.CreateTemp("", "tty-graphics-protocol-*")
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	if _, err := f.Write(rgba.Pix); err != nil {
+		os.Remove(f.Name())
+		return "", err
+	}
+	return f.Name(), nil
 }
 
 // Flush returns the escape sequences for any images that need to be sent to

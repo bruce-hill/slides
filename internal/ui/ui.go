@@ -3,6 +3,7 @@ package ui
 
 import (
 	"fmt"
+	"image"
 	"io"
 	"os/exec"
 	"path/filepath"
@@ -46,6 +47,7 @@ type model struct {
 	runCache   map[ast.Node]string
 	scrolls    map[ast.Node]int // Scroll positions of embedded file viewports
 	fileCache  map[string]string
+	imageCache map[string]image.Image
 	viewports  []render.Viewport
 	lines      []string
 	lineWidth  int
@@ -95,6 +97,7 @@ func (m *model) loadSlide(index int) {
 	m.runCache = map[ast.Node]string{}
 	m.scrolls = map[ast.Node]int{}
 	m.fileCache = map[string]string{}
+	m.imageCache = map[string]image.Image{}
 	m.scroll = 0
 	m.rerender()
 }
@@ -121,6 +124,7 @@ func (m *model) rerender() {
 		out, m.viewports = render.Render(m.doc, render.Options{
 			Src: []byte(text), Dir: m.dir(), TermW: m.width, TermH: m.height,
 			Focused: m.focused(), RunCache: m.runCache, Kitty: m.kitty, Scrolls: m.scrolls, FileCache: m.fileCache,
+			ImageCache: m.imageCache,
 		})
 	}
 	m.lines = strings.Split(out, "\n")

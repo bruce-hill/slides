@@ -61,11 +61,12 @@ type Options struct {
 	Src          []byte
 	Dir          string // Directory that relative paths are resolved from
 	TermW, TermH int
-	Focused      ast.Node            // The focused demo, link, or image
-	RunCache     map[ast.Node]string // Output of ```run blocks
-	Kitty        *Kitty              // If set, images use the kitty graphics protocol
-	Scrolls      map[ast.Node]int    // Scroll position of each embedded file viewport
-	FileCache    map[string]string   // Highlighted contents of embedded files
+	Focused      ast.Node               // The focused demo, link, or image
+	RunCache     map[ast.Node]string    // Output of ```run blocks
+	Kitty        *Kitty                 // If set, images use the kitty graphics protocol
+	Scrolls      map[ast.Node]int       // Scroll position of each embedded file viewport
+	FileCache    map[string]string      // Highlighted contents of embedded files
+	ImageCache   map[string]image.Image // Decoded images
 }
 
 // Viewport is an embedded file that is too tall to show all at once, and is
@@ -85,7 +86,6 @@ type renderer struct {
 	measuring bool // Whether images are being left out to measure the other content
 	numImages int  // Number of images found while measuring
 	imageRows int  // Maximum height of each image
-	images    map[string]image.Image
 	viewports []Viewport
 }
 
@@ -308,13 +308,13 @@ func (r *renderer) image(n *ast.Image) string {
 			r.numImages++
 			return " "
 		}
-		img, ok := r.images[path]
+		img, ok := r.ImageCache[path]
 		if !ok {
 			var err error
 			if img, err = loadImage(path); err != nil {
 				return wrap("31;1", "22;39", fmt.Sprintf("<Couldn't load image %s: %v>", n.Destination, err))
 			}
-			r.images[path] = img
+			r.ImageCache[path] = img
 		}
 		// Half-block characters show two square pixels per cell
 		cellW, cellH := 1, 2
@@ -417,7 +417,10 @@ func (r *renderer) run(n ast.Node, code string) string {
 // Render renders a document, sizing headings and boxes to match the widest
 // element on the slide. It also returns the slide's scrollable viewports.
 func Render(doc ast.Node, opts Options) (string, []Viewport) {
-	r := &renderer{Options: opts, images: map[string]image.Image{}}
+	r := &renderer{Options: opts}
+	if r.ImageCache == nil {
+		r.ImageCache = map[string]image.Image{}
+	}
 
 	// Measure everything except images, then split the remaining height
 	// (minus the status bar and a margin) between the images.

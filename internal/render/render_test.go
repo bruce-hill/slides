@@ -44,6 +44,7 @@ func TestRun(t *testing.T) {
 }
 
 func TestKittyPlaceholder(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir()) // The image is written to a file no terminal will delete
 	k := NewKitty()
 	img := image.NewRGBA(image.Rect(0, 0, 10, 10))
 	out := k.Placeholder("img.png", img, 4, 3)
