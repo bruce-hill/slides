@@ -43,6 +43,8 @@ type model struct {
 	focusables []ast.Node
 	focus      int
 	runCache   map[ast.Node]string
+	scrolls    map[ast.Node]int // Scroll positions of embedded file viewports
+	viewports  []render.Viewport
 	lines      []string
 	lineWidth  int
 	scroll     int
@@ -83,6 +85,7 @@ func (m *model) loadSlide(index int) {
 	m.focusables = render.Focusables(m.doc, src)
 	m.focus = 0
 	m.runCache = map[ast.Node]string{}
+	m.scrolls = map[ast.Node]int{}
 	m.scroll = 0
 	m.rerender()
 }
@@ -102,12 +105,13 @@ func (m *model) rerender() {
 	}
 	text := m.slides[m.index].Text
 	var out string
+	m.viewports = nil
 	if m.raw {
 		out = highlight.Highlight(text, highlight.LexerFor("markdown"))
 	} else if strings.TrimSpace(text) != "" {
-		out = render.Render(m.doc, render.Options{
+		out, m.viewports = render.Render(m.doc, render.Options{
 			Src: []byte(text), Dir: m.dir(), TermW: m.width, TermH: m.height,
-			Focused: m.focused(), RunCache: m.runCache, Kitty: m.kitty,
+			Focused: m.focused(), RunCache: m.runCache, Kitty: m.kitty, Scrolls: m.scrolls,
 		})
 	}
 	m.lines = strings.Split(out, "\n")
@@ -117,6 +121,32 @@ func (m *model) rerender() {
 
 func (m *model) setScroll(scroll int) {
 	m.scroll = max(0, min(scroll, len(m.lines)-(m.height-1)))
+}
+
+// offset returns where the slide's text is drawn on the screen.
+func (m *model) offset() (x, y int) {
+	if m.raw {
+		return 0, -m.scroll
+	}
+	avail := m.height - 1 // The last row is the status bar
+	return max(0, (m.width-m.lineWidth)/2), max(0, (avail-len(m.lines))/2) - m.scroll
+}
+
+// scrollWheel scrolls the viewport under the mouse, or the whole slide if
+// there isn't one.
+func (m *model) scrollWheel(mouse tea.Mouse, delta int) {
+	x, y := m.offset()
+	col, row := mouse.X-x, mouse.Y-y
+	for _, v := range m.viewports {
+		if row >= v.Row && row < v.Row+v.Height && col >= v.Col && col < v.Col+v.Width {
+			if scroll := max(0, min(v.Scroll+3*delta, v.MaxScroll)); scroll != v.Scroll {
+				m.scrolls[v.Node] = scroll
+				m.rerender()
+			}
+			return
+		}
+	}
+	m.setScroll(m.scroll + delta)
 }
 
 func (m *model) findSlide(step int) {
@@ -270,9 +300,9 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 	case tea.MouseWheelMsg:
 		switch msg.Button {
 		case tea.MouseWheelUp:
-			m.setScroll(m.scroll - 1)
+			m.scrollWheel(msg.Mouse(), -1)
 		case tea.MouseWheelDown:
-			m.setScroll(m.scroll + 1)
+			m.scrollWheel(msg.Mouse(), 1)
 		}
 	case tea.KeyPressMsg:
 		if m.prompt != noPrompt {
@@ -326,14 +356,9 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 
 func (m *model) View() tea.View {
 	rows := make([]string, m.height)
-	avail := m.height - 1 // The last row is the status bar
-	x, y := 0, 0
-	if !m.raw {
-		x = max(0, (m.width-m.lineWidth)/2)
-		y = max(0, (avail-len(m.lines))/2)
-	}
-	for i := range avail {
-		if j := i - y + m.scroll; j >= 0 && j < len(m.lines) {
+	x, y := m.offset()
+	for i := range m.height - 1 {
+		if j := i - y; j >= 0 && j < len(m.lines) {
 			rows[i] = strings.Repeat(" ", x) + ansi.Truncate(m.lines[j], m.width-x, "")
 		}
 	}

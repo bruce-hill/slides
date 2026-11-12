@@ -1,6 +1,7 @@
 package render
 
 import (
+	"fmt"
 	"image"
 	"image/png"
 	"os"
@@ -19,7 +20,7 @@ func TestRender(t *testing.T) {
 	if len(focusables) != 2 {
 		t.Fatalf("got %d focusables, want 2 (a link and a demo)", len(focusables))
 	}
-	out := Render(doc, Options{Src: src, TermW: 80, TermH: 24, Focused: focusables[1], RunCache: map[ast.Node]string{}})
+	out, _ := Render(doc, Options{Src: src, TermW: 80, TermH: 24, Focused: focusables[1], RunCache: map[ast.Node]string{}})
 	plain := ansi.Strip(out)
 	for _, want := range []string{"Title", "Some text and a link.", "◆ one", "Demo (press Enter to run)", "$ echo hi"} {
 		if !strings.Contains(plain, want) {
@@ -35,7 +36,8 @@ func TestRender(t *testing.T) {
 
 func TestRun(t *testing.T) {
 	src := []byte("```run\necho hello\n```\n")
-	out := ansi.Strip(Render(Parse(src), Options{Src: src, Dir: ".", TermW: 80, TermH: 24, RunCache: map[ast.Node]string{}}))
+	rendered, _ := Render(Parse(src), Options{Src: src, Dir: ".", TermW: 80, TermH: 24, RunCache: map[ast.Node]string{}})
+	out := ansi.Strip(rendered)
 	if !strings.Contains(out, "│ hello") {
 		t.Errorf("run block output is missing:\n%s", out)
 	}
@@ -85,8 +87,54 @@ func TestImageFitsSlide(t *testing.T) {
 	f.Close()
 
 	src := []byte("# Title\n\n![](tall.png)\n\n- one\n- two\n- three\n")
-	out := Render(Parse(src), Options{Src: src, Dir: dir, TermW: 100, TermH: 40, RunCache: map[ast.Node]string{}})
+	out, _ := Render(Parse(src), Options{Src: src, Dir: dir, TermW: 100, TermH: 40, RunCache: map[ast.Node]string{}})
 	if lines := strings.Count(out, "\n") + 1; lines > 39 {
 		t.Errorf("slide is %d lines tall, which doesn't fit in a 40 line terminal", lines)
+	}
+}
+
+func TestViewport(t *testing.T) {
+	dir := t.TempDir()
+	var lines []string
+	for i := range 100 {
+		lines = append(lines, fmt.Sprintf("line %d", i+1))
+		if i == 10 {
+			lines[i] += " is the longest line"
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "long.txt"), []byte(strings.Join(lines, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	src := []byte("# Title\n\n- ![Long](long.txt)\n")
+	doc := Parse(src)
+	var node ast.Node
+	ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if _, ok := n.(*ast.Image); ok && entering {
+			node = n
+		}
+		return ast.WalkContinue, nil
+	})
+
+	out, viewports := Render(doc, Options{Src: src, Dir: dir, TermW: 80, TermH: 40, RunCache: map[ast.Node]string{}, Scrolls: map[ast.Node]int{node: 50}})
+	if len(viewports) != 1 {
+		t.Fatalf("got %d viewports, want 1", len(viewports))
+	}
+	v := viewports[0]
+	if v.Node != node || v.Height != 22 || v.Scroll != 50 || v.MaxScroll != 80 {
+		t.Errorf("viewport = %+v, want 22 rows scrolled to line 51 of 100", v)
+	}
+	rows := strings.Split(ansi.Strip(out), "\n")
+	if top := []rune(rows[v.Row]); v.Col >= len(top) || top[v.Col] != '┌' {
+		t.Errorf("viewport position (%d, %d) isn't the box's corner:\n%s", v.Row, v.Col, ansi.Strip(out))
+	}
+	if !strings.Contains(rows[v.Row+1], " 51│ line 51") || !strings.Contains(rows[v.Row+20], " 70│ line 70") {
+		t.Errorf("viewport doesn't show lines 51-70:\n%s", ansi.Strip(out))
+	}
+	top, _ := Render(doc, Options{Src: src, Dir: dir, TermW: 80, TermH: 40, RunCache: map[ast.Node]string{}, Scrolls: map[ast.Node]int{}})
+	if MaxWidth(top) != MaxWidth(out) {
+		t.Errorf("viewport width changed when scrolled: %d at the top, %d scrolled", MaxWidth(top), MaxWidth(out))
+	}
+	if strings.Contains(out, "\x1b_") {
+		t.Errorf("viewport marker was left in the output")
 	}
 }

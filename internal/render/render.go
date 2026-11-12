@@ -64,6 +64,17 @@ type Options struct {
 	Focused      ast.Node            // The focused demo, link, or image
 	RunCache     map[ast.Node]string // Output of ```run blocks
 	Kitty        *Kitty              // If set, images use the kitty graphics protocol
+	Scrolls      map[ast.Node]int    // Scroll position of each embedded file viewport
+}
+
+// Viewport is an embedded file that is too tall to show all at once, and is
+// shown in a scrollable box instead.
+type Viewport struct {
+	Node ast.Node
+	// Position and size of the box (including its border) in the rendered text
+	Row, Col, Width, Height int
+	Scroll                  int // First line shown
+	MaxScroll               int
 }
 
 type renderer struct {
@@ -74,6 +85,7 @@ type renderer struct {
 	numImages int  // Number of images found while measuring
 	imageRows int  // Maximum height of each image
 	images    map[string]image.Image
+	viewports []Viewport
 }
 
 func (r *renderer) resolve(path string) string {
@@ -95,11 +107,18 @@ func (r *renderer) heading(title string, color color.Color) string {
 // box draws a border around text, optionally with line numbers.
 func (r *renderer) box(text string, lineNumbers bool, color color.Color) string {
 	lines := strings.Split(text, "\n")
-	numW := len(strconv.Itoa(len(lines)))
+	return r.boxLines(lines, lineNumbers, 1, len(lines), color)
+}
+
+// boxLines draws a border around lines of text. Line numbers start from first
+// and are padded to fit the number total.
+func (r *renderer) boxLines(lines []string, lineNumbers bool, first, total int, color color.Color) string {
+	lines = append([]string(nil), lines...)
+	numW := len(strconv.Itoa(total))
 	bar := lipgloss.NewStyle().Foreground(color).Render("│")
 	for i, line := range lines {
 		if lineNumbers {
-			lines[i] = fmt.Sprintf("\x1b[2m%*d\x1b[22m%s %s", numW, i+1, bar, line)
+			lines[i] = fmt.Sprintf("\x1b[2m%*d\x1b[22m%s %s", numW, first+i, bar, line)
 		} else {
 			lines[i] = " " + line
 		}
@@ -329,7 +348,43 @@ func (r *renderer) image(n *ast.Image) string {
 		title = path
 	}
 	code := highlight.Highlight(string(contents), highlight.LexerFor(strings.TrimPrefix(filepath.Ext(path), ".")))
-	return r.heading(title, cyan) + "\n" + r.box(code, true, cyan)
+	return r.heading(title, cyan) + "\n" + r.viewport(n, code, cyan)
+}
+
+// Marks the top left corner of a viewport in the rendered text. It's removed
+// once the viewport's position has been found.
+var viewportMarkerRe = regexp.MustCompile("\x1b_viewport(\\d+)\x1b\\\\")
+
+// viewport draws code in a box with line numbers, which scrolls if the code is
+// too tall to fit on the slide.
+func (r *renderer) viewport(n ast.Node, code string, color color.Color) string {
+	lines := strings.Split(code, "\n")
+	height := max(8, r.TermH/2)
+	if len(lines) <= height {
+		return r.box(code, true, color)
+	}
+	maxScroll := len(lines) - height
+	scroll := max(0, min(r.Scrolls[n], maxScroll))
+	// Keep the box the same width however it's scrolled
+	visible := append([]string(nil), lines[scroll:scroll+height]...)
+	visible[0] += strings.Repeat(" ", MaxWidth(code)-ansi.StringWidth(visible[0]))
+	box := strings.Split(r.boxLines(visible, true, scroll+1, len(lines), color), "\n")
+
+	// Draw a scroll thumb over the right border
+	thumbH := max(1, height*height/len(lines))
+	thumbTop := scroll * (height - thumbH) / maxScroll
+	for i := thumbTop; i < thumbTop+thumbH; i++ {
+		line := box[1+i]
+		if j := strings.LastIndex(line, "│"); j >= 0 {
+			box[1+i] = line[:j] + "┃" + line[j+len("│"):]
+		}
+	}
+
+	r.viewports = append(r.viewports, Viewport{
+		Node: n, Width: MaxWidth(box[0]), Height: len(box), Scroll: scroll, MaxScroll: maxScroll,
+	})
+	box[0] = fmt.Sprintf("\x1b_viewport%d\x1b\\", len(r.viewports)-1) + box[0]
+	return strings.Join(box, "\n")
 }
 
 // run executes a ```run code block and returns its output. Output is cached
@@ -353,8 +408,8 @@ func (r *renderer) run(n ast.Node, code string) string {
 }
 
 // Render renders a document, sizing headings and boxes to match the widest
-// element on the slide.
-func Render(doc ast.Node, opts Options) string {
+// element on the slide. It also returns the slide's scrollable viewports.
+func Render(doc ast.Node, opts Options) (string, []Viewport) {
 	r := &renderer{Options: opts, images: map[string]image.Image{}}
 
 	// Measure everything except images, then split the remaining height
@@ -368,7 +423,19 @@ func Render(doc ast.Node, opts Options) string {
 
 	r.width = r.TermW / 4
 	r.width = MaxWidth(r.blocks(doc, "\n\n"))
-	return r.blocks(doc, "\n\n")
+	r.viewports = nil
+	lines := strings.Split(r.blocks(doc, "\n\n"), "\n")
+
+	// Find where each viewport ended up, and remove its marker
+	for row, line := range lines {
+		for _, m := range viewportMarkerRe.FindAllStringSubmatchIndex(line, -1) {
+			i, _ := strconv.Atoi(line[m[2]:m[3]])
+			r.viewports[i].Row = row
+			r.viewports[i].Col = ansi.StringWidth(line[:m[0]])
+		}
+		lines[row] = viewportMarkerRe.ReplaceAllString(line, "")
+	}
+	return strings.Join(lines, "\n"), r.viewports
 }
 
 // Focusables returns the elements on a slide that can be activated with Enter.

@@ -22,7 +22,8 @@ file passed on the command line is shown as a single syntax-highlighted slide.
   maximum width or height as a percentage of the terminal instead. In [kitty](https://sw.kovidgoyal.net/kitty/),
   images are shown at full resolution with the kitty graphics protocol; other
   terminals get a lower resolution version made of colored characters
-- Other files can be embedded with `![title](file.txt)`
+- Other files can be embedded with `![title](file.txt)`. Files taller than half
+  the screen are shown in a box that scrolls with the mouse wheel
 - Links can be opened with **Enter**
 
 ## Keys
