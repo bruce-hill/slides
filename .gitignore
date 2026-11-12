@@ -1,6 +1,1 @@
-build
-__pycache__
-slides.spec
-slides
-.dependencies-installed
-.venv
+/slides

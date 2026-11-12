@@ -1,4 +1,4 @@
-#!./slides.py
+#!./slides
 
 # Slides Demo
 
