@@ -4,6 +4,7 @@ package render
 import (
 	"context"
 	"fmt"
+	"image"
 	"image/color"
 	"os"
 	"os/exec"
@@ -68,6 +69,11 @@ type Options struct {
 type renderer struct {
 	Options
 	width int // Width that headings and boxes expand to fill
+
+	measuring bool // Whether images are being left out to measure the other content
+	numImages int  // Number of images found while measuring
+	imageRows int  // Maximum height of each image
+	images    map[string]image.Image
 }
 
 func (r *renderer) resolve(path string) string {
@@ -255,40 +261,47 @@ var (
 	heightOptRe = regexp.MustCompile(`height=(\d+)%`)
 )
 
+// imageSize returns the size in cells to display a w x h pixel image. Images
+// fill the space left over by the rest of the slide, but aren't enlarged past
+// twice their natural size, which would look blurry. The width=N% and
+// height=N% options in the alt text replace the maximum width and height.
+func (r *renderer) imageSize(alt string, w, h, cellW, cellH int) (cols, rows int) {
+	maxCols, maxRows := float64(r.TermW*8/10), float64(r.imageRows)
+	if m := widthOptRe.FindStringSubmatch(alt); m != nil {
+		pct, _ := strconv.Atoi(m[1])
+		maxCols = float64(r.TermW * pct / 100)
+	}
+	if m := heightOptRe.FindStringSubmatch(alt); m != nil {
+		pct, _ := strconv.Atoi(m[1])
+		maxRows = float64(r.TermH * pct / 100)
+	}
+	natCols, natRows := float64(w)/float64(cellW), float64(h)/float64(cellH)
+	scale := min(maxCols/natCols, maxRows/natRows, 2)
+	return max(1, int(natCols*scale)), max(1, int(natRows*scale))
+}
+
 func (r *renderer) image(n *ast.Image) string {
 	path := r.resolve(string(n.Destination))
 	alt := plainText(n, r.Src)
 	if isImage(path) {
-		img, err := loadImage(path)
-		if err != nil {
-			return wrap("31;1", "22;39", fmt.Sprintf("<Couldn't load image %s: %v>", n.Destination, err))
+		if r.measuring {
+			r.numImages++
+			return " "
+		}
+		img, ok := r.images[path]
+		if !ok {
+			var err error
+			if img, err = loadImage(path); err != nil {
+				return wrap("31;1", "22;39", fmt.Sprintf("<Couldn't load image %s: %v>", n.Destination, err))
+			}
+			r.images[path] = img
 		}
 		// Half-block characters show two square pixels per cell
 		cellW, cellH := 1, 2
 		if r.Kitty != nil {
 			cellW, cellH = r.Kitty.CellW, r.Kitty.CellH
 		}
-		w, h := img.Bounds().Dx(), img.Bounds().Dy()
-		rowsFor := func(cols int) int { return cols * cellW * h / (w * cellH) }
-		colsFor := func(rows int) int { return rows * cellH * w / (h * cellW) }
-
-		cols := min(w/cellW, max(40, 2*r.TermW/3))
-		rows := rowsFor(cols)
-		if maxRows := max(20, 2*r.TermH/3); rows > maxRows {
-			rows = maxRows
-			cols = colsFor(rows)
-		}
-		if m := widthOptRe.FindStringSubmatch(alt); m != nil {
-			pct, _ := strconv.Atoi(m[1])
-			cols = r.TermW * pct / 100
-			rows = rowsFor(cols)
-		}
-		if m := heightOptRe.FindStringSubmatch(alt); m != nil {
-			pct, _ := strconv.Atoi(m[1])
-			rows = r.TermH * pct / 100
-			cols = colsFor(rows)
-		}
-		cols, rows = max(cols, 1), max(rows, 1)
+		cols, rows := r.imageSize(alt, img.Bounds().Dx(), img.Bounds().Dy(), cellW, cellH)
 
 		var out string
 		if r.Kitty != nil {
@@ -342,7 +355,17 @@ func (r *renderer) run(n ast.Node, code string) string {
 // Render renders a document, sizing headings and boxes to match the widest
 // element on the slide.
 func Render(doc ast.Node, opts Options) string {
-	r := &renderer{Options: opts}
+	r := &renderer{Options: opts, images: map[string]image.Image{}}
+
+	// Measure everything except images, then split the remaining height
+	// (minus the status bar and a margin) between the images.
+	r.measuring = true
+	other := strings.Count(r.blocks(doc, "\n\n"), "\n") + 1 - r.numImages
+	r.measuring = false
+	if r.numImages > 0 {
+		r.imageRows = max(8, (r.TermH-1-2-other)/r.numImages)
+	}
+
 	r.width = r.TermW / 4
 	r.width = MaxWidth(r.blocks(doc, "\n\n"))
 	return r.blocks(doc, "\n\n")

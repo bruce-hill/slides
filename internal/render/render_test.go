@@ -2,6 +2,9 @@ package render
 
 import (
 	"image"
+	"image/png"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -52,5 +55,38 @@ func TestKittyPlaceholder(t *testing.T) {
 	k.Placeholder("img.png", img, 4, 3)
 	if sent := k.Flush(); sent != "" {
 		t.Errorf("image was sent twice")
+	}
+}
+
+func TestImageSize(t *testing.T) {
+	r := &renderer{Options: Options{TermW: 100, TermH: 40}, imageRows: 30}
+	for _, tc := range []struct {
+		alt        string
+		w, h       int
+		cols, rows int
+	}{
+		{"", 1000, 500, 80, 20},                     // Limited to 80% of the width
+		{"", 1000, 2000, 30, 30},                    // Limited by the leftover height
+		{"", 100, 100, 20, 10},                      // Enlarged at most 2x
+		{"width=50%", 1000, 500, 50, 12},            // Width option replaces the width limit
+		{"width=100% height=10%", 1000, 500, 16, 4}, // Both options fit the image in a box
+	} {
+		// 10x20 pixel cells
+		if cols, rows := r.imageSize(tc.alt, tc.w, tc.h, 10, 20); cols != tc.cols || rows != tc.rows {
+			t.Errorf("imageSize(%q, %d, %d) = %dx%d, want %dx%d", tc.alt, tc.w, tc.h, cols, rows, tc.cols, tc.rows)
+		}
+	}
+}
+
+func TestImageFitsSlide(t *testing.T) {
+	dir := t.TempDir()
+	f, _ := os.Create(filepath.Join(dir, "tall.png"))
+	png.Encode(f, image.NewRGBA(image.Rect(0, 0, 100, 1000)))
+	f.Close()
+
+	src := []byte("# Title\n\n![](tall.png)\n\n- one\n- two\n- three\n")
+	out := Render(Parse(src), Options{Src: src, Dir: dir, TermW: 100, TermH: 40, RunCache: map[ast.Node]string{}})
+	if lines := strings.Count(out, "\n") + 1; lines > 39 {
+		t.Errorf("slide is %d lines tall, which doesn't fit in a 40 line terminal", lines)
 	}
 }
