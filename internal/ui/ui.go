@@ -93,6 +93,18 @@ func New(slides []deck.Slide) tea.Model {
 		slides: slides, start: time.Now(), input: input, querying: true,
 		terms: map[termKey]*term.Term{}, termOutput: make(chan struct{}, 1),
 	}
+	// Shells can take a while to start, so every demo's shell is started now,
+	// to be ready by the time its slide is shown
+	for i, slide := range slides {
+		src := []byte(slide.Text)
+		demo := 0
+		for _, n := range render.Focusables(render.Parse(src), src) {
+			if n, ok := n.(*ast.FencedCodeBlock); ok {
+				m.startTerm(termKey{i, demo}, n)
+				demo++
+			}
+		}
+	}
 	m.loadSlide(0)
 	return m
 }

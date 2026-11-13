@@ -149,3 +149,20 @@ func TestZoom(t *testing.T) {
 		t.Errorf("terminal is %d rows after unzooming, want 5", len(lines))
 	}
 }
+
+func TestDemosStartEarly(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // Without the user's .bashrc
+	t.Setenv("SHELL", "bash")
+	m := New([]deck.Slide{{Filename: "a.md", Text: "one"}, {Filename: "a.md", Text: "```demo\necho hi\n```\n\n```demo\necho bye\n```"}}).(*model)
+	defer m.quit()
+	if len(m.terms) != 2 {
+		t.Fatalf("%d demo shells were started, want 2 before their slide is shown", len(m.terms))
+	}
+	first := m.terms[termKey{1, 0}]
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m.Update(queryTimeoutMsg{})
+	m.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	if len(m.slideTerms) != 2 || m.slideTerms[m.focusables[0]] != first || len(m.terms) != 2 {
+		t.Errorf("the demo shells started early weren't used on their slide")
+	}
+}

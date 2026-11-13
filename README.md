@@ -19,7 +19,9 @@ file passed on the command line is shown as a single syntax-highlighted slide.
   code typed in at the prompt, ready to run. Click a terminal (or press
   **Enter** when it's focused) to type in it, and press **Ctrl-]** to return to
   the slides. Your shell loads its usual configuration, then (for bash, zsh and
-  fish) its prompt is replaced with a simple `>`. Terminals keep running when you change slides. They fill the space left
+  fish) its prompt is replaced with a simple `>`. Every demo's shell starts when slides
+  starts, so it's ready by the time you get to it, and keeps running when you
+  change slides. They fill the space left
   over by the rest of the slide, or ` ```demo height=10 ` sets their height
 - Images (`![](image.png)`) are drawn in the terminal, sized to fill the space
   left over by the rest of the slide (up to 80% of the width, and at most twice
@@ -54,6 +56,9 @@ file passed on the command line is shown as a single syntax-highlighted slide.
 | `                                | Toggle viewing the slide's source      |
 | Ctrl-Z                           | Suspend                                |
 | q, Ctrl-C                        | Quit                                   |
+
+If a demo's shell is slow to start, run with `SLIDES_DEBUG_LOG=debug.log` to
+log when each shell gets ready, and any terminal queries that aren't answered.
 
 ## Building
 
