@@ -2,6 +2,7 @@
 package deck
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -84,15 +85,23 @@ func Steps(text string) (string, []int) {
 	return text, slices.Compact(pauses)
 }
 
-// Load reads the slides from a file. Markdown files are split into slides,
-// and any other file is shown as a single code slide.
+// Load reads the slides from a file, or from standard input as markdown if
+// the filename is "-". Markdown files are split into slides, and any other
+// file is shown as a single code slide.
 func Load(filename string) ([]Slide, error) {
-	data, err := os.ReadFile(filename)
+	var data []byte
+	var err error
+	ext := strings.TrimPrefix(filepath.Ext(filename), ".")
+	if filename == "-" {
+		data, err = io.ReadAll(os.Stdin)
+		ext = "md"
+	} else {
+		data, err = os.ReadFile(filename)
+	}
 	if err != nil {
 		return nil, err
 	}
 	text := string(data)
-	ext := strings.TrimPrefix(filepath.Ext(filename), ".")
 	var slides []Slide
 	switch ext {
 	case "slides", "md", "markdown", "txt":

@@ -8,6 +8,14 @@ with [Bubble Tea](https://github.com/charmbracelet/bubbletea) and
 
 To run the slides program from this directory, run `go run ./cmd/slides examples/sample.md`
 
+```
+slides [options] file...
+  -n number   start at slide number (default 1)
+  -version    print the version and exit
+```
+
+Pass `-` as a file to read markdown from standard input.
+
 Slides are separated by lines of three or more dashes (`---`). A line with
 `<!-- pause -->` splits a slide into steps, which are revealed one at a time. Any non-markdown
 file passed on the command line is shown as a single syntax-highlighted slide.

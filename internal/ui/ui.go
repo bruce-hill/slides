@@ -93,8 +93,9 @@ type model struct {
 	termOutput chan struct{}           // Signaled when a terminal's screen changes
 }
 
-// New creates a presenter for the given slides.
-func New(slides []deck.Slide) tea.Model {
+// New creates a presenter for the given slides, starting at the slide with
+// the given number (counting from 0).
+func New(slides []deck.Slide, start int) tea.Model {
 	input := textinput.New()
 	input.Prompt = ""
 	m := &model{
@@ -124,7 +125,7 @@ func New(slides []deck.Slide) tea.Model {
 	if numDemos <= eagerDemos {
 		m.startDemos(0, m.numbers[len(m.numbers)-1])
 	}
-	m.loadSlide(0)
+	m.loadSlide(m.firstStep(max(0, start)))
 	return m
 }
 

@@ -16,7 +16,7 @@ import (
 
 func newModel(t *testing.T, text string) *model {
 	t.Helper()
-	m := New([]deck.Slide{{Filename: "test.md", Text: text}}).(*model)
+	m := New([]deck.Slide{{Filename: "test.md", Text: text}}, 0).(*model)
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	return m
 }
@@ -63,7 +63,7 @@ func TestKittyDetection(t *testing.T) {
 
 func TestKeys(t *testing.T) {
 	long := "# Long\n\n" + strings.Repeat("line\n\n", 40)
-	m := New([]deck.Slide{{Filename: "a.md", Text: long}, {Filename: "a.md", Text: "two"}, {Filename: "a.md", Text: "three"}}).(*model)
+	m := New([]deck.Slide{{Filename: "a.md", Text: long}, {Filename: "a.md", Text: "two"}, {Filename: "a.md", Text: "three"}}, 0).(*model)
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	m.Update(queryTimeoutMsg{})
 	press := func(key string) {
@@ -95,7 +95,7 @@ func TestKeys(t *testing.T) {
 func TestTyping(t *testing.T) {
 	t.Setenv("HOME", t.TempDir()) // Without the user's .bashrc
 	t.Setenv("SHELL", "bash")
-	m := New([]deck.Slide{{Filename: "a.md", Text: "```demo\necho hi\n```"}, {Filename: "a.md", Text: "two"}}).(*model)
+	m := New([]deck.Slide{{Filename: "a.md", Text: "```demo\necho hi\n```"}, {Filename: "a.md", Text: "two"}}, 0).(*model)
 	defer m.quit()
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	m.Update(queryTimeoutMsg{})
@@ -127,7 +127,7 @@ func TestTyping(t *testing.T) {
 func TestZoom(t *testing.T) {
 	t.Setenv("HOME", t.TempDir()) // Without the user's .bashrc
 	t.Setenv("SHELL", "bash")
-	m := New([]deck.Slide{{Filename: "a.md", Text: "# Title\n\n```demo height=5\necho hi\n```"}}).(*model)
+	m := New([]deck.Slide{{Filename: "a.md", Text: "# Title\n\n```demo height=5\necho hi\n```"}}, 0).(*model)
 	defer m.quit()
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	m.Update(queryTimeoutMsg{})
@@ -154,7 +154,7 @@ func TestZoom(t *testing.T) {
 func TestDemosStartEarly(t *testing.T) {
 	t.Setenv("HOME", t.TempDir()) // Without the user's .bashrc
 	t.Setenv("SHELL", "bash")
-	m := New([]deck.Slide{{Filename: "a.md", Text: "one"}, {Filename: "a.md", Text: "```demo\necho hi\n```\n\n```demo\necho bye\n```"}}).(*model)
+	m := New([]deck.Slide{{Filename: "a.md", Text: "one"}, {Filename: "a.md", Text: "```demo\necho hi\n```\n\n```demo\necho bye\n```"}}, 0).(*model)
 	defer m.quit()
 	if len(m.terms) != 2 {
 		t.Fatalf("%d demo shells were started, want 2 before their slide is shown", len(m.terms))
@@ -191,7 +191,7 @@ func TestSteps(t *testing.T) {
 		{Filename: "a.md", Text: text, Reveal: pauses[0]},
 		{Filename: "a.md", Text: text, Step: 1},
 		{Filename: "a.md", Text: "three"},
-	}).(*model)
+	}, 0).(*model)
 	defer m.quit()
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	m.Update(queryTimeoutMsg{})
@@ -231,7 +231,7 @@ func TestDemosStartAhead(t *testing.T) {
 	for range eagerDemos + 2 {
 		slides = append(slides, deck.Slide{Filename: "a.md", Text: "```demo\necho hi\n```"})
 	}
-	m := New(slides).(*model)
+	m := New(slides, 0).(*model)
 	defer m.quit()
 	if len(m.terms) != 1+demosAhead {
 		t.Errorf("%d demo shells were started, want %d for the first slide and the ones after it", len(m.terms), 1+demosAhead)
