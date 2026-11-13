@@ -223,3 +223,21 @@ func TestSteps(t *testing.T) {
 		t.Errorf("going to slide 2 went to step %d, want its first step, 1", m.index)
 	}
 }
+
+func TestDemosStartAhead(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // Without the user's .bashrc
+	t.Setenv("SHELL", "bash")
+	var slides []deck.Slide
+	for range eagerDemos + 2 {
+		slides = append(slides, deck.Slide{Filename: "a.md", Text: "```demo\necho hi\n```"})
+	}
+	m := New(slides).(*model)
+	defer m.quit()
+	if len(m.terms) != 1+demosAhead {
+		t.Errorf("%d demo shells were started, want %d for the first slide and the ones after it", len(m.terms), 1+demosAhead)
+	}
+	m.loadSlide(eagerDemos)
+	if len(m.terms) != 3+demosAhead || m.terms[termKey{eagerDemos + 1, 0}] == nil {
+		t.Errorf("%d demo shells were started, want %d after going to slide %d", len(m.terms), 3+demosAhead, eagerDemos+1)
+	}
+}

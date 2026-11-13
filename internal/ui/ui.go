@@ -111,15 +111,18 @@ func New(slides []deck.Slide) tea.Model {
 			m.numbers = append(m.numbers, m.numbers[i-1])
 		}
 	}
-	// Shells can take a while to start, so every demo's shell is started now,
-	// to be ready by the time its slide is shown
-	for i, slide := range slides {
+	// Shells can take a while to start, so they're started before their
+	// slide is shown, to be ready by the time it is. In a small deck, they're
+	// all started now, and otherwise the next few slides' shells are.
+	numDemos := 0
+	for _, slide := range slides {
 		if slide.Step == 0 {
 			src := []byte(slide.Text)
-			for demo, n := range demos(render.Parse(src), src) {
-				m.startTerm(termKey{m.numbers[i], demo}, slide, n)
-			}
+			numDemos += len(demos(render.Parse(src), src))
 		}
+	}
+	if numDemos <= eagerDemos {
+		m.startDemos(0, m.numbers[len(m.numbers)-1])
 	}
 	m.loadSlide(0)
 	return m
@@ -143,6 +146,25 @@ func (m *model) waitForOutput() tea.Cmd {
 		<-output
 		time.Sleep(time.Second / 60)
 		return termOutputMsg{}
+	}
+}
+
+const (
+	eagerDemos = 8 // Decks with this many demos or fewer start them all at once
+	demosAhead = 3 // Otherwise, this many slides' demos are started ahead
+)
+
+// startDemos starts the shells for the demos on the slides numbered from first
+// to last, unless they've been started already or couldn't be.
+func (m *model) startDemos(first, last int) {
+	for number := first; number <= min(last, m.numbers[len(m.numbers)-1]); number++ {
+		slide := m.slides[m.firstStep(number)]
+		src := []byte(slide.Text)
+		for demo, n := range demos(render.Parse(src), src) {
+			if key := (termKey{number, demo}); m.terms[key] == nil && m.termErrs[key] == nil {
+				m.startTerm(key, slide, n)
+			}
+		}
 	}
 }
 
@@ -224,6 +246,7 @@ func (m *model) loadSlide(index int) {
 			m.slideTerms[n] = t
 		}
 	}
+	m.startDemos(m.numbers[m.index]+1, m.numbers[m.index]+demosAhead)
 	m.rerender()
 }
 
