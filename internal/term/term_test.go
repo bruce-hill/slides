@@ -33,13 +33,27 @@ func waitFor(t *testing.T, term *Term, changed chan struct{}, text string) strin
 }
 
 func TestTerm(t *testing.T) {
+	for _, tc := range []struct {
+		name, bashrc string
+		typedSetup   bool
+	}{
+		{"prompt", "PS1='fancy prompt$ '\n", false},
+		// The prompt setup is typed in when the PROMPT_COMMAND is replaced
+		{"prompt command", "PS1='fancy prompt$ '\nPROMPT_COMMAND='echo fancy'\n", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testTerm(t, "alias greet='echo hello from bashrc'\n"+tc.bashrc, tc.typedSetup)
+		})
+	}
+}
+
+func testTerm(t *testing.T, bashrc string, typedSetup bool) {
 	// The user's configuration is loaded, but their prompt is replaced
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("DEMO_VAR", "from the environment")
 	t.Setenv("HISTFILE", "/dev/null")
 	t.Setenv("SHELL", "bash")
-	bashrc := "alias greet='echo hello from bashrc'\nPS1='fancy prompt$ '\nPROMPT_COMMAND='echo fancy'\n"
 	if err := os.WriteFile(filepath.Join(home, ".bashrc"), []byte(bashrc), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -60,6 +74,11 @@ func TestTerm(t *testing.T) {
 	if strings.Contains(screen, "\none\n") {
 		t.Fatalf("input was run before pressing Enter:\n%s", screen)
 	}
+	term.mu.Lock()
+	if term.setUp != typedSetup {
+		t.Errorf("prompt setup typed in = %v, want %v", term.setUp, typedSetup)
+	}
+	term.mu.Unlock()
 	term.SendKey(uv.KeyPressEvent{Code: uv.KeyEnter})
 	screen = waitFor(t, term, changed, "\ntwo\nhello from bashrc\nfrom the environment\n>")
 	if strings.Contains(screen, "fancy") || strings.Contains(screen, "PS1") {
