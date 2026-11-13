@@ -21,6 +21,7 @@ import (
 	"github.com/yuin/goldmark/text"
 
 	"github.com/bruce-hill/slides/internal/highlight"
+	"github.com/bruce-hill/slides/internal/term"
 )
 
 var markdown = goldmark.New(goldmark.WithExtensions(extension.Strikethrough, extension.Table))
@@ -58,15 +59,17 @@ type Options struct {
 	Src          []byte
 	Dir          string // Directory that relative paths are resolved from
 	TermW, TermH int
-	Focused      ast.Node               // The focused demo, link, or image
-	Kitty        *Kitty                 // If set, images use the kitty graphics protocol
-	Scrolls      map[ast.Node]int       // Scroll position of each embedded file viewport
-	FileCache    map[string]string      // Highlighted contents of embedded files
-	ImageCache   map[string]image.Image // Decoded images
+	Focused      ast.Node                // The focused demo, link, or image
+	Kitty        *Kitty                  // If set, images use the kitty graphics protocol
+	Scrolls      map[ast.Node]int        // Scroll position of each embedded file viewport
+	FileCache    map[string]string       // Highlighted contents of embedded files
+	ImageCache   map[string]image.Image  // Decoded images
+	Terms        map[ast.Node]*term.Term // Terminals for demo blocks
+	Typing       bool                    // Whether keys go to the focused terminal
 }
 
 // Viewport is an embedded file that is too tall to show all at once, and is
-// shown in a scrollable box instead.
+// shown in a scrollable box instead, or a demo's terminal.
 type Viewport struct {
 	Node ast.Node
 	// Position and size of the box (including its border) in the rendered text
@@ -80,9 +83,9 @@ type renderer struct {
 	width    int // Width that headings and boxes expand to fill
 	maxWidth int // Width that text wraps at, which is narrower inside lists
 
-	measuring bool // Whether images are being left out to measure the other content
-	numImages int  // Number of images found while measuring
-	imageRows int  // Maximum height of each image
+	measuring bool // Whether images and terminals are left out to measure the other content
+	numImages int  // Number of images and terminals found while measuring
+	imageRows int  // Maximum height of each image or terminal
 	viewports []Viewport
 }
 
@@ -193,10 +196,11 @@ func (r *renderer) block(n ast.Node) string {
 		code := CodeText(n, r.Src)
 		switch lang := string(n.Language(r.Src)); lang {
 		case "demo":
-			title := "Demo"
-			if n == r.Focused {
-				title = "Demo (press Enter to run)"
+			if t := r.Terms[n]; t != nil {
+				return r.terminal(n, t)
 			}
+			// The demo's terminal couldn't be started
+			title := "Demo"
 			prompt := "\x1b[33;1m$\x1b[m " + highlight.Highlight(code, highlight.LexerFor("bash"))
 			return r.heading(title, green) + "\n" + r.box(prompt, false, green)
 		default:
@@ -448,6 +452,54 @@ func (r *renderer) viewport(n ast.Node, code string, color color.Color) string {
 	})
 	box[0] = fmt.Sprintf("\x1b_viewport%d\x1b\\", len(r.viewports)-1) + box[0]
 	return strings.Join(box, "\n")
+}
+
+// TermSize returns the size of a demo's terminal. Terminals are 80% of the
+// screen's width, and fill the height left over by the rest of the slide
+// unless the code block has a height=N option.
+func (r *renderer) termSize(n *ast.FencedCodeBlock) (cols, rows int) {
+	cols, rows = max(20, r.TermW*8/10-2), max(3, r.imageRows-3) // Less the title and border
+	if n.Info != nil {
+		for _, opt := range strings.Fields(string(n.Info.Segment.Value(r.Src))) {
+			if h, ok := strings.CutPrefix(opt, "height="); ok {
+				if h, err := strconv.Atoi(h); err == nil && h > 0 {
+					rows = h
+				}
+			}
+		}
+	}
+	return cols, rows
+}
+
+// terminal draws a demo's terminal in a box.
+func (r *renderer) terminal(n *ast.FencedCodeBlock, t *term.Term) string {
+	if r.measuring {
+		r.numImages++
+		return " "
+	}
+	cols, rows := r.termSize(n)
+	t.Resize(cols, rows)
+	typing := r.Typing && n == r.Focused
+	title := "Demo"
+	switch {
+	case t.Exited():
+		title = "Demo (exited)"
+		if n == r.Focused {
+			title = "Demo (exited, press Enter to restart)"
+		}
+	case typing:
+		title = "Demo (press Ctrl-] to return to the slides)"
+	case n == r.Focused:
+		title = "Demo (press Enter or click to type)"
+	}
+	border := lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(green)
+	if typing {
+		border = border.BorderForeground(lipgloss.BrightGreen).BorderStyle(lipgloss.ThickBorder())
+	}
+	box := strings.Split(border.Render(strings.Join(t.Lines(typing), "\n")), "\n")
+	r.viewports = append(r.viewports, Viewport{Node: n, Width: MaxWidth(box[0]), Height: len(box)})
+	box[0] = fmt.Sprintf("\x1b_viewport%d\x1b\\", len(r.viewports)-1) + box[0]
+	return r.heading(title, green) + "\n" + strings.Join(box, "\n")
 }
 
 // Render renders a document, sizing headings and boxes to match the widest

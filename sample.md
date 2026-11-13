@@ -52,8 +52,9 @@ The paragraph continues on line two.
 
 # Demos
 
-For runnable demos, you can use ```` ```demo ````
-and press **Enter** to run the demo
+A ```` ```demo ```` block is a terminal with the code typed in.
+Click it (or press **Tab** then **Enter**) to type in it, and
+press **Ctrl-]** to return to the slides.
 
 ```demo
 seq 1000 | less

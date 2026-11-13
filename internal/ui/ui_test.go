@@ -89,3 +89,34 @@ func TestKeys(t *testing.T) {
 		t.Errorf("g: slide %d, want 0", m.index)
 	}
 }
+
+func TestTyping(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // Without the user's .bashrc
+	m := New([]deck.Slide{{Filename: "a.md", Text: "```demo\necho hi\n```"}, {Filename: "a.md", Text: "two"}}).(*model)
+	defer m.quit()
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m.Update(queryTimeoutMsg{})
+	if len(m.slideTerms) != 1 {
+		t.Fatalf("demo has %d terminals, want 1", len(m.slideTerms))
+	}
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !m.typing {
+		t.Fatalf("Enter didn't start typing in the demo's terminal")
+	}
+	if _, cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"}); cmd != nil || m.index != 0 {
+		t.Errorf("q didn't go to the terminal")
+	}
+	m.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	if m.index != 0 {
+		t.Errorf("l changed slides while typing")
+	}
+	m.Update(tea.KeyPressMsg{Code: ']', Mod: tea.ModCtrl})
+	if m.typing {
+		t.Fatalf("Ctrl-] didn't stop typing")
+	}
+	m.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	m.Update(tea.KeyPressMsg{Code: 'h', Text: "h"})
+	if m.index != 0 || m.slideTerms[m.focusables[0]] == nil || len(m.terms) != 1 {
+		t.Errorf("demo's terminal wasn't kept after leaving the slide and coming back")
+	}
+}

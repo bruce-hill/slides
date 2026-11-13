@@ -4,7 +4,6 @@ package ui
 import (
 	"fmt"
 	"image"
-	"io"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -21,6 +20,7 @@ import (
 	"github.com/bruce-hill/slides/internal/deck"
 	"github.com/bruce-hill/slides/internal/highlight"
 	"github.com/bruce-hill/slides/internal/render"
+	"github.com/bruce-hill/slides/internal/term"
 )
 
 type promptMode int
@@ -33,10 +33,14 @@ const (
 
 type (
 	tickMsg         time.Time
-	demoDoneMsg     struct{}
 	wheelMsg        struct{}
 	queryTimeoutMsg struct{}
+	termOutputMsg   struct{}
 )
+
+// termKey identifies a demo's terminal by its slide and its position on the
+// slide, which stay the same when the slide is parsed again.
+type termKey struct{ slide, demo int }
 
 type model struct {
 	slides []deck.Slide
@@ -72,13 +76,22 @@ type model struct {
 	// kitty graphics, so images aren't drawn twice in different ways.
 	querying   bool
 	kittyReply bool
+
+	// Each demo has a terminal, which keeps running after leaving its slide
+	terms      map[termKey]*term.Term
+	slideTerms map[ast.Node]*term.Term // Terminals on the current slide
+	typing     bool                    // Whether keys go to the focused terminal
+	termOutput chan struct{}           // Signaled when a terminal's screen changes
 }
 
 // New creates a presenter for the given slides.
 func New(slides []deck.Slide) tea.Model {
 	input := textinput.New()
 	input.Prompt = ""
-	m := &model{slides: slides, start: time.Now(), input: input, querying: true}
+	m := &model{
+		slides: slides, start: time.Now(), input: input, querying: true,
+		terms: map[termKey]*term.Term{}, termOutput: make(chan struct{}, 1),
+	}
 	m.loadSlide(0)
 	return m
 }
@@ -90,7 +103,34 @@ func tick() tea.Cmd {
 func (m *model) Init() tea.Cmd {
 	// In case the terminal never answers
 	timeout := tea.Tick(time.Second, func(time.Time) tea.Msg { return queryTimeoutMsg{} })
-	return tea.Batch(tick(), tea.Raw(render.KittyQuery), timeout)
+	return tea.Batch(tick(), tea.Raw(render.KittyQuery), timeout, m.waitForOutput())
+}
+
+// waitForOutput waits for any terminal's screen to change. Changes that
+// happen close together are drawn together.
+func (m *model) waitForOutput() tea.Cmd {
+	output := m.termOutput
+	return func() tea.Msg {
+		<-output
+		time.Sleep(time.Second / 60)
+		return termOutputMsg{}
+	}
+}
+
+// startTerm starts a demo's terminal, with the demo's code typed in.
+func (m *model) startTerm(key termKey, n *ast.FencedCodeBlock) *term.Term {
+	code := render.CodeText(n, []byte(m.slides[key.slide].Text))
+	t, err := term.Start(m.slides[key.slide].Dir(), code, 80, 24, func() {
+		select {
+		case m.termOutput <- struct{}{}:
+		default:
+		}
+	})
+	if err != nil {
+		return nil
+	}
+	m.terms[key] = t
+	return t
 }
 
 // queryDone finishes checking the terminal for kitty graphics support.
@@ -124,7 +164,34 @@ func (m *model) loadSlide(index int) {
 	m.fileCache = map[string]string{}
 	m.imageCache = map[string]image.Image{}
 	m.scroll = 0
+	m.typing = false
+	m.slideTerms = map[ast.Node]*term.Term{}
+	for _, n := range m.focusables {
+		if n, ok := n.(*ast.FencedCodeBlock); ok {
+			t := m.terms[m.demoKey(n)]
+			if t == nil {
+				t = m.startTerm(m.demoKey(n), n)
+			}
+			if t != nil {
+				m.slideTerms[n] = t
+			}
+		}
+	}
 	m.rerender()
+}
+
+// demoKey returns the key for a demo on the current slide.
+func (m *model) demoKey(n *ast.FencedCodeBlock) termKey {
+	demo := 0
+	for _, f := range m.focusables {
+		if f == n {
+			break
+		}
+		if _, ok := f.(*ast.FencedCodeBlock); ok {
+			demo++
+		}
+	}
+	return termKey{m.index, demo}
 }
 
 func (m *model) focused() ast.Node {
@@ -149,7 +216,7 @@ func (m *model) rerender() {
 		out, m.viewports = render.Render(m.doc, render.Options{
 			Src: []byte(text), Dir: m.dir(), TermW: m.width, TermH: m.height,
 			Focused: m.focused(), Kitty: m.kitty, Scrolls: m.scrolls, FileCache: m.fileCache,
-			ImageCache: m.imageCache,
+			ImageCache: m.imageCache, Terms: m.slideTerms, Typing: m.typing,
 		})
 	}
 	m.lines = strings.Split(out, "\n")
@@ -170,21 +237,80 @@ func (m *model) offset() (x, y int) {
 	return max(0, (m.width-m.lineWidth)/2), max(0, (avail-len(m.lines))/2) - m.scroll
 }
 
-// scrollWheel scrolls the viewport under the mouse, or the whole slide if
-// there isn't one.
-func (m *model) scrollWheel(mouse tea.Mouse, delta int) {
+// viewportAt returns the viewport at a position on the screen, if any.
+func (m *model) viewportAt(mouse tea.Mouse) (render.Viewport, bool) {
 	x, y := m.offset()
 	col, row := mouse.X-x, mouse.Y-y
 	for _, v := range m.viewports {
 		if row >= v.Row && row < v.Row+v.Height && col >= v.Col && col < v.Col+v.Width {
-			if scroll := max(0, min(v.Scroll+3*delta, v.MaxScroll)); scroll != v.Scroll {
-				m.scrolls[v.Node] = scroll
-				m.rerender()
-			}
-			return
+			return v, true
 		}
 	}
+	return render.Viewport{}, false
+}
+
+// typingTerm returns the terminal that keys are going to, if any.
+func (m *model) typingTerm() *term.Term {
+	if !m.typing {
+		return nil
+	}
+	return m.slideTerms[m.focused()]
+}
+
+// termMouse returns a mouse event's position inside the terminal that keys
+// are going to, if it's over it.
+func (m *model) termMouse(mouse tea.Mouse) (uv.Mouse, bool) {
+	v, ok := m.viewportAt(mouse)
+	if !ok || m.typingTerm() == nil || v.Node != m.focused() {
+		return uv.Mouse{}, false
+	}
+	x, y := m.offset()
+	// Inside the border
+	return uv.Mouse{X: mouse.X - x - v.Col - 1, Y: mouse.Y - y - v.Row - 1, Button: mouse.Button, Mod: mouse.Mod}, true
+}
+
+// scrollWheel scrolls the viewport under the mouse, or the whole slide if
+// there isn't one.
+func (m *model) scrollWheel(mouse tea.Mouse, delta int) {
+	if tm, ok := m.termMouse(mouse); ok {
+		tm.Button = uv.MouseWheelDown
+		if delta < 0 {
+			tm.Button, delta = uv.MouseWheelUp, -delta
+		}
+		for range delta {
+			m.typingTerm().SendMouse(uv.MouseWheelEvent(tm))
+		}
+		return
+	}
+	if v, ok := m.viewportAt(mouse); ok && m.slideTerms[v.Node] == nil {
+		if scroll := max(0, min(v.Scroll+3*delta, v.MaxScroll)); scroll != v.Scroll {
+			m.scrolls[v.Node] = scroll
+			m.rerender()
+		}
+		return
+	}
 	m.setScroll(m.scroll + delta)
+}
+
+// click starts typing in a terminal when it's clicked, and stops when
+// something else is clicked.
+func (m *model) click(mouse tea.Mouse) {
+	v, ok := m.viewportAt(mouse)
+	if t := m.slideTerms[v.Node]; ok && t != nil && !t.Exited() {
+		for i, n := range m.focusables {
+			if n == v.Node {
+				m.focus = i
+			}
+		}
+		m.typing = true
+		m.rerender()
+		if tm, ok := m.termMouse(mouse); ok {
+			t.SendMouse(uv.MouseClickEvent(tm))
+		}
+	} else if m.typing {
+		m.typing = false
+		m.rerender()
+	}
 }
 
 func (m *model) findSlide(step int) {
@@ -202,19 +328,6 @@ func (m *model) findSlide(step int) {
 	}
 }
 
-// demoCmd runs a demo on a cleared screen.
-type demoCmd struct{ *exec.Cmd }
-
-func (c demoCmd) Run() error {
-	if c.Stdout != nil {
-		io.WriteString(c.Stdout, "\x1b[2J\x1b[H")
-	}
-	return c.Cmd.Run()
-}
-func (c demoCmd) SetStdin(r io.Reader)  { c.Stdin = r }
-func (c demoCmd) SetStdout(w io.Writer) { c.Stdout = w }
-func (c demoCmd) SetStderr(w io.Writer) { c.Stderr = w }
-
 func openExternal(target string) {
 	opener := "xdg-open"
 	if runtime.GOOS == "darwin" {
@@ -226,14 +339,29 @@ func openExternal(target string) {
 	}
 }
 
-// activate runs the focused demo or opens the focused link or image.
+// activate starts typing in the focused demo's terminal (restarting it if
+// it has exited), or opens the focused link or image.
 func (m *model) activate() tea.Cmd {
 	src := []byte(m.slides[m.index].Text)
 	switch n := m.focused().(type) {
 	case *ast.FencedCodeBlock:
-		cmd := exec.Command("bash", "-c", strings.TrimSpace(render.CodeText(n, src)))
-		cmd.Dir = m.dir()
-		return tea.Exec(demoCmd{cmd}, func(error) tea.Msg { return demoDoneMsg{} })
+		t := m.slideTerms[n]
+		if t == nil {
+			return nil
+		}
+		if t.Exited() {
+			t.Close()
+			delete(m.terms, m.demoKey(n))
+			delete(m.slideTerms, n)
+			if t = m.startTerm(m.demoKey(n), n); t == nil {
+				m.rerender()
+				return nil
+			}
+			m.slideTerms[n] = t
+		}
+		m.typing = true
+		m.rerender()
+		return nil
 	case *ast.Link:
 		openExternal(string(n.Destination))
 	case *ast.AutoLink:
@@ -304,6 +432,9 @@ func (m *model) resetImages() tea.Cmd {
 }
 
 func (m *model) quit() tea.Cmd {
+	for _, t := range m.terms {
+		t.Close()
+	}
 	if m.kitty == nil {
 		return tea.Quit
 	}
@@ -334,9 +465,11 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 		m.queryDone()
 	case tickMsg:
 		return tick()
-	case demoDoneMsg:
-		m.moveFocus(1)
-		return m.resetImages()
+	case termOutputMsg:
+		if len(m.slideTerms) > 0 {
+			m.rerender()
+		}
+		return m.waitForOutput()
 	case tea.ResumeMsg:
 		return m.resetImages()
 	case tea.MouseWheelMsg:
@@ -356,10 +489,34 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 	case wheelMsg:
 		m.scrollWheel(m.wheelMouse, m.wheelDelta)
 		m.wheelDelta, m.wheelPending = 0, false
+	case tea.MouseClickMsg:
+		m.click(msg.Mouse())
+	case tea.MouseReleaseMsg:
+		if tm, ok := m.termMouse(msg.Mouse()); ok {
+			m.typingTerm().SendMouse(uv.MouseReleaseEvent(tm))
+		}
+	case tea.MouseMotionMsg:
+		if tm, ok := m.termMouse(msg.Mouse()); ok {
+			m.typingTerm().SendMouse(uv.MouseMotionEvent(tm))
+		}
+	case tea.PasteMsg:
+		if t := m.typingTerm(); t != nil {
+			t.Paste(msg.Content)
+		}
 	case tea.KeyPressMsg:
 		if m.prompt != noPrompt {
 			return m.updatePrompt(msg)
 		}
+		if t := m.typingTerm(); t != nil && !t.Exited() {
+			if msg.String() == "ctrl+]" {
+				m.typing = false
+				m.rerender()
+			} else {
+				t.SendKey(uv.KeyPressEvent(msg))
+			}
+			return nil
+		}
+		m.typing = false
 		switch key := msg.String(); key {
 		case "q", "ctrl+c":
 			return m.quit()

@@ -8,9 +8,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yuin/goldmark/ast"
+
+	"github.com/bruce-hill/slides/internal/term"
 )
 
 func TestRender(t *testing.T) {
@@ -22,7 +25,7 @@ func TestRender(t *testing.T) {
 	}
 	out, _ := Render(doc, Options{Src: src, TermW: 80, TermH: 24, Focused: focusables[1]})
 	plain := ansi.Strip(out)
-	for _, want := range []string{"Title", "Some text and a link.", "◆ one", "Demo (press Enter to run)", "$ echo hi"} {
+	for _, want := range []string{"Title", "Some text and a link.", "◆ one", "Demo", "$ echo hi"} {
 		if !strings.Contains(plain, want) {
 			t.Errorf("output is missing %q:\n%s", want, plain)
 		}
@@ -57,6 +60,33 @@ func TestTable(t *testing.T) {
 		if !strings.Contains(plain, want) {
 			t.Errorf("table is missing %q:\n%s", want, plain)
 		}
+	}
+}
+
+func TestTerminal(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // Without the user's .bashrc
+	src := []byte("# Title\n\n```demo height=5\necho hi\n```\n")
+	doc := Parse(src)
+	n := Focusables(doc, src)[0]
+	tm, err := term.Start(t.TempDir(), "echo hi", 80, 24, func() {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tm.Close()
+	for start := time.Now(); !strings.Contains(ansi.Strip(strings.Join(tm.Lines(false), "\n")), "> echo hi"); {
+		if time.Since(start) > 5*time.Second {
+			t.Fatal("the demo's code was never typed in")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	out, viewports := Render(doc, Options{Src: src, TermW: 100, TermH: 40, Focused: n, Typing: true, Terms: map[ast.Node]*term.Term{n: tm}})
+	plain := ansi.Strip(out)
+	if !strings.Contains(plain, "Ctrl-]") || !strings.Contains(plain, "┃> echo hi") {
+		t.Errorf("terminal isn't drawn in a box with the code typed in:\n%s", plain)
+	}
+	if len(viewports) != 1 || viewports[0].Node != n || viewports[0].Height != 7 || viewports[0].Width != 80 {
+		t.Errorf("viewports = %+v, want an 80x7 box (78x5 inside the border)", viewports)
 	}
 }
 
