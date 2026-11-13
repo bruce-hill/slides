@@ -2,7 +2,9 @@
 package term
 
 import (
+	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -48,6 +50,22 @@ var typedSetup = map[string]string{
 	"fish": ` function fish_prompt; set_color -o green; echo -n '> '; set_color normal; end; function fish_right_prompt; end; printf '\e[H\e[2J\e[3J\e]7337\a'`,
 }
 
+// debugLog logs when each demo's shell becomes ready, and the escape
+// sequences that the emulator doesn't handle, to the file named by
+// $SLIDES_DEBUG_LOG. The shell's output isn't logged.
+var debugLog = func() *log.Logger {
+	if path := os.Getenv("SLIDES_DEBUG_LOG"); path != "" {
+		if f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+			return log.New(f, "", log.Lmicroseconds)
+		}
+	}
+	return log.New(io.Discard, "", 0)
+}()
+
+type loggerFunc func(format string, args ...any)
+
+func (f loggerFunc) Printf(format string, args ...any) { f(format, args...) }
+
 // Start starts the user's shell in dir in a cols x rows terminal, with input
 // typed at its prompt but not run. notify is called from another goroutine
 // whenever the screen changes.
@@ -69,9 +87,22 @@ func Start(dir, input string, cols, rows int, notify func()) (*Term, error) {
 	}
 
 	t := &Term{emu: vt.NewEmulator(cols, rows), pty: f, cmd: cmd}
+	start := time.Now()
+	logf := func(format string, args ...any) {
+		debugLog.Printf("shell %d at %.3fs: %s", cmd.Process.Pid, time.Since(start).Seconds(), fmt.Sprintf(format, args...))
+	}
+	logf("started %s", shell)
+	t.emu.SetLogger(loggerFunc(func(format string, args ...any) {
+		// Mode changes are logged too, which aren't interesting
+		if strings.HasPrefix(format, "unhandled") {
+			logf(format, args...)
+		}
+	}))
+	answerQueries(t.emu)
 	setup, knownShell := typedSetup[name]
 	typeSetup := func() {
 		if !t.setUp && !t.pasted {
+			logf("typing in the prompt setup")
 			t.setUp = true
 			t.emu.SendText(setup)
 			// Enter is pressed separately, because ble.sh inserts a newline
@@ -89,6 +120,7 @@ func Start(dir, input string, cols, rows int, notify func()) (*Term, error) {
 	// have turned on bracketed paste yet when the prompt is ready.
 	paste := func() {
 		if !t.pasted {
+			logf("pasting the demo's code")
 			t.pasted = true
 			t.emu.SendText(ansi.BracketedPasteStart + input + ansi.BracketedPasteEnd)
 		}
@@ -96,6 +128,7 @@ func Start(dir, input string, cols, rows int, notify func()) (*Term, error) {
 	t.emu.RegisterOscHandler(readyOSC, func([]byte) bool {
 		// The prompt is ready, but until the shell's line editor starts
 		// reading input, the terminal would echo the input back as is
+		logf("the prompt is set up")
 		go func() {
 			for start := time.Now(); !lineEditing(f) && time.Since(start) < 5*time.Second; {
 				time.Sleep(5 * time.Millisecond)
@@ -111,6 +144,9 @@ func Start(dir, input string, cols, rows int, notify func()) (*Term, error) {
 	// when the prompt setup can be typed in, or for other shells, when the
 	// input can be pasted.
 	t.emu.SetCallbacks(vt.Callbacks{EnableMode: func(mode ansi.Mode) {
+		if mode == ansi.ModeBracketedPaste {
+			logf("bracketed paste turned on")
+		}
 		switch {
 		case mode != ansi.ModeBracketedPaste:
 		case !knownShell:
@@ -135,6 +171,7 @@ func Start(dir, input string, cols, rows int, notify func()) (*Term, error) {
 		t.mu.Lock()
 		defer t.mu.Unlock()
 		if !t.pasted {
+			logf("gave up waiting for the prompt, pasting anyway")
 			t.pasted = true
 			t.emu.Paste(input)
 		}
