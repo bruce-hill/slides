@@ -490,7 +490,7 @@ func (r *renderer) terminal(n *ast.FencedCodeBlock, t *term.Term) string {
 	case typing:
 		title = "Demo (press Ctrl-] to return to the slides)"
 	case n == r.Focused:
-		title = "Demo (press Enter or click to type)"
+		title = "Demo (press Enter or click to type, or z to zoom)"
 	}
 	border := lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(green)
 	if typing {

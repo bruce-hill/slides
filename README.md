@@ -47,6 +47,8 @@ file passed on the command line is shown as a single syntax-highlighted slide.
 | Tab, Shift-Tab                   | Cycle the focused demo, link, or image |
 | Enter                            | Type in the focused demo, or open the  |
 |                                  | focused link or image                  |
+| z                                | Type in the focused demo, zoomed to    |
+|                                  | fill the screen                        |
 | Ctrl-]                           | Stop typing in a demo                  |
 | r, Ctrl-R                        | Redraw                                 |
 | `                                | Toggle viewing the slide's source      |

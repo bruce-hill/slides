@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/ansi/kitty"
 
 	"github.com/bruce-hill/slides/internal/deck"
@@ -118,5 +119,31 @@ func TestTyping(t *testing.T) {
 	m.Update(tea.KeyPressMsg{Code: 'h', Text: "h"})
 	if m.index != 0 || m.slideTerms[m.focusables[0]] == nil || len(m.terms) != 1 {
 		t.Errorf("demo's terminal wasn't kept after leaving the slide and coming back")
+	}
+}
+
+func TestZoom(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // Without the user's .bashrc
+	m := New([]deck.Slide{{Filename: "a.md", Text: "# Title\n\n```demo height=5\necho hi\n```"}}).(*model)
+	defer m.quit()
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m.Update(queryTimeoutMsg{})
+	m.Update(tea.KeyPressMsg{Code: 'z', Text: "z"})
+	if !m.typing || !m.zoomed {
+		t.Fatalf("z didn't start typing in a zoomed terminal")
+	}
+	if lines := m.typingTerm().Lines(false); len(lines) != 29 || ansi.StringWidth(lines[0]) != 100 {
+		t.Errorf("zoomed terminal is %dx%d, want 100x29", ansi.StringWidth(lines[0]), len(lines))
+	}
+	m.Update(tea.WindowSizeMsg{Width: 90, Height: 20})
+	if lines := m.typingTerm().Lines(false); len(lines) != 19 || ansi.StringWidth(lines[0]) != 90 {
+		t.Errorf("zoomed terminal is %dx%d after resizing, want 90x19", ansi.StringWidth(lines[0]), len(lines))
+	}
+	m.Update(tea.KeyPressMsg{Code: ']', Mod: tea.ModCtrl})
+	if m.typing || m.zoomed {
+		t.Fatalf("Ctrl-] didn't stop typing and zooming")
+	}
+	if lines := m.slideTerms[m.focused()].Lines(false); len(lines) != 5 {
+		t.Errorf("terminal is %d rows after unzooming, want 5", len(lines))
 	}
 }

@@ -81,6 +81,7 @@ type model struct {
 	terms      map[termKey]*term.Term
 	slideTerms map[ast.Node]*term.Term // Terminals on the current slide
 	typing     bool                    // Whether keys go to the focused terminal
+	zoomed     bool                    // Whether that terminal fills the screen
 	termOutput chan struct{}           // Signaled when a terminal's screen changes
 }
 
@@ -164,7 +165,7 @@ func (m *model) loadSlide(index int) {
 	m.fileCache = map[string]string{}
 	m.imageCache = map[string]image.Image{}
 	m.scroll = 0
-	m.typing = false
+	m.typing, m.zoomed = false, false
 	m.slideTerms = map[ast.Node]*term.Term{}
 	for _, n := range m.focusables {
 		if n, ok := n.(*ast.FencedCodeBlock); ok {
@@ -205,6 +206,10 @@ func (m *model) focused() ast.Node {
 // other than the scroll position changes.
 func (m *model) rerender() {
 	if m.width == 0 || m.querying {
+		return
+	}
+	if t := m.typingTerm(); t != nil && m.zoomed {
+		t.Resize(m.width, m.height-1) // Above the status bar
 		return
 	}
 	text := m.slides[m.index].Text
@@ -260,6 +265,9 @@ func (m *model) typingTerm() *term.Term {
 // termMouse returns a mouse event's position inside the terminal that keys
 // are going to, if it's over it.
 func (m *model) termMouse(mouse tea.Mouse) (uv.Mouse, bool) {
+	if m.zoomed && m.typingTerm() != nil {
+		return uv.Mouse(mouse), mouse.Y < m.height-1
+	}
 	v, ok := m.viewportAt(mouse)
 	if !ok || m.typingTerm() == nil || v.Node != m.focused() {
 		return uv.Mouse{}, false
@@ -295,6 +303,10 @@ func (m *model) scrollWheel(mouse tea.Mouse, delta int) {
 // click starts typing in a terminal when it's clicked, and stops when
 // something else is clicked.
 func (m *model) click(mouse tea.Mouse) {
+	if tm, ok := m.termMouse(mouse); ok && m.zoomed {
+		m.typingTerm().SendMouse(uv.MouseClickEvent(tm))
+		return
+	}
 	v, ok := m.viewportAt(mouse)
 	if t := m.slideTerms[v.Node]; ok && t != nil && !t.Exited() {
 		for i, n := range m.focusables {
@@ -308,9 +320,27 @@ func (m *model) click(mouse tea.Mouse) {
 			t.SendMouse(uv.MouseClickEvent(tm))
 		}
 	} else if m.typing {
-		m.typing = false
+		m.stopTyping()
+	}
+}
+
+func (m *model) stopTyping() {
+	m.typing, m.zoomed = false, false
+	m.rerender()
+}
+
+// zoom starts typing in the focused demo's terminal, which fills the screen
+// until typing stops.
+func (m *model) zoom() tea.Cmd {
+	if _, ok := m.focused().(*ast.FencedCodeBlock); !ok {
+		return nil
+	}
+	cmd := m.activate()
+	if m.typing {
+		m.zoomed = true
 		m.rerender()
 	}
+	return cmd
 }
 
 func (m *model) findSlide(step int) {
@@ -466,7 +496,9 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 	case tickMsg:
 		return tick()
 	case termOutputMsg:
-		if len(m.slideTerms) > 0 {
+		if t := m.typingTerm(); t != nil && t.Exited() {
+			m.stopTyping()
+		} else if len(m.slideTerms) > 0 && !m.zoomed {
 			m.rerender()
 		}
 		return m.waitForOutput()
@@ -509,14 +541,15 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 		}
 		if t := m.typingTerm(); t != nil && !t.Exited() {
 			if msg.String() == "ctrl+]" {
-				m.typing = false
-				m.rerender()
+				m.stopTyping()
 			} else {
 				t.SendKey(uv.KeyPressEvent(msg))
 			}
 			return nil
 		}
-		m.typing = false
+		if m.typing {
+			m.stopTyping()
+		}
 		switch key := msg.String(); key {
 		case "q", "ctrl+c":
 			return m.quit()
@@ -543,6 +576,8 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 			return tea.Suspend
 		case "enter":
 			return m.activate()
+		case "z":
+			return m.zoom()
 		case "tab":
 			m.moveFocus(1)
 		case "shift+tab":
@@ -565,10 +600,18 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 
 func (m *model) View() tea.View {
 	rows := make([]string, m.height)
-	x, y := m.offset()
-	for i := range m.height - 1 {
-		if j := i - y; j >= 0 && j < len(m.lines) {
-			rows[i] = strings.Repeat(" ", x) + ansi.Truncate(m.lines[j], m.width-x, "")
+	if t := m.typingTerm(); t != nil && m.zoomed {
+		for i, line := range t.Lines(true) {
+			if i < m.height-1 {
+				rows[i] = ansi.Truncate(line, m.width, "")
+			}
+		}
+	} else {
+		x, y := m.offset()
+		for i := range m.height - 1 {
+			if j := i - y; j >= 0 && j < len(m.lines) {
+				rows[i] = strings.Repeat(" ", x) + ansi.Truncate(m.lines[j], m.width-x, "")
+			}
 		}
 	}
 
@@ -586,6 +629,9 @@ func (m *model) View() tea.View {
 				left = fmt.Sprintf("    %d:%02d:%02d", h, mins, s)
 			} else {
 				left = fmt.Sprintf("    %2d:%02d", mins, s)
+			}
+			if m.zoomed {
+				left += "  Demo (press Ctrl-] to return to the slides)"
 			}
 			left = "\x1b[2m" + left + "\x1b[22m"
 		}
