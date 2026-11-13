@@ -13,7 +13,8 @@ file passed on the command line is shown as a single syntax-highlighted slide.
 
 ## Features
 
-- Markdown formatting, lists, block quotes, and syntax-highlighted code blocks
+- Markdown formatting, lists, block quotes, tables, and syntax-highlighted code
+  blocks
 - ` ```run ` code blocks are run in bash and show their output
 - ` ```demo ` code blocks are run interactively when you press **Enter**
 - Images (`![](image.png)`) are drawn in the terminal, sized to fill the space

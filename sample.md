@@ -43,6 +43,11 @@ The paragraph continues on line two.
 > Block quote
 > that spans multiple lines
 
+| Table  | Alignment |
+|--------|----------:|
+| Tables | *work*    |
+| too    | `!`       |
+
 Here's a shell example:
 
 ```run

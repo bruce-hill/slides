@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/table"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
@@ -25,7 +26,7 @@ import (
 	"github.com/bruce-hill/slides/internal/highlight"
 )
 
-var markdown = goldmark.New(goldmark.WithExtensions(extension.Strikethrough))
+var markdown = goldmark.New(goldmark.WithExtensions(extension.Strikethrough, extension.Table))
 
 func Parse(src []byte) ast.Node {
 	return markdown.Parser().Parse(text.NewReader(src))
@@ -210,9 +211,44 @@ func (r *renderer) block(n ast.Node) string {
 		return wrap("2", "22", strings.Repeat("─", r.width))
 	case *ast.HTMLBlock:
 		return CodeText(n, r.Src)
+	case *east.Table:
+		return r.table(n)
 	default:
 		return r.blocks(n, "\n\n")
 	}
+}
+
+func (r *renderer) table(n *east.Table) string {
+	var header []string
+	var rows [][]string
+	for row := n.FirstChild(); row != nil; row = row.NextSibling() {
+		var cells []string
+		for c := row.FirstChild(); c != nil; c = c.NextSibling() {
+			cells = append(cells, strings.TrimSpace(r.inlines(c)))
+		}
+		if _, ok := row.(*east.TableHeader); ok {
+			header = cells
+		} else {
+			rows = append(rows, cells)
+		}
+	}
+	return table.New().Headers(header...).Rows(rows...).
+		Border(lipgloss.RoundedBorder()).BorderStyle(lipgloss.NewStyle().Foreground(blue)).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			style := lipgloss.NewStyle().Padding(0, 1)
+			if row == table.HeaderRow {
+				style = style.Bold(true)
+			}
+			if col < len(n.Alignments) {
+				switch n.Alignments[col] {
+				case east.AlignRight:
+					style = style.Align(lipgloss.Right)
+				case east.AlignCenter:
+					style = style.Align(lipgloss.Center)
+				}
+			}
+			return style
+		}).String()
 }
 
 func (r *renderer) inlines(n ast.Node) string {

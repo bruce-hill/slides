@@ -34,6 +34,17 @@ func TestRender(t *testing.T) {
 	}
 }
 
+func TestTable(t *testing.T) {
+	src := []byte("| Name | Count |\n|------|------:|\n| *apples* | 3 |\n| pears | 12 |\n")
+	out, _ := Render(Parse(src), Options{Src: src, TermW: 80, TermH: 24, RunCache: map[ast.Node]string{}})
+	plain := ansi.Strip(out)
+	for _, want := range []string{"│ Name   │ Count │", "│ apples │     3 │", "│ pears  │    12 │"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("table is missing %q:\n%s", want, plain)
+		}
+	}
+}
+
 func TestRun(t *testing.T) {
 	src := []byte("```run\necho hello\n```\n")
 	rendered, _ := Render(Parse(src), Options{Src: src, Dir: ".", TermW: 80, TermH: 24, RunCache: map[ast.Node]string{}})
