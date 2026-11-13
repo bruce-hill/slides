@@ -230,11 +230,17 @@ func (m *model) rerender() {
 	if m.raw {
 		out = highlight.Highlight(text, highlight.LexerFor("markdown"))
 	} else if strings.TrimSpace(text) != "" {
-		out, m.viewports = render.Render(m.doc, render.Options{
+		opts := render.Options{
 			Src: []byte(text), Dir: m.dir(), TermW: m.width, TermH: m.height,
 			Focused: m.focused(), Kitty: m.kitty, Scrolls: m.scrolls, FileCache: m.fileCache,
 			ImageCache: m.imageCache, Terms: m.slideTerms, Typing: m.typing,
-		})
+		}
+		for n, size := range render.TermSizes(m.doc, opts) {
+			if t := m.slideTerms[n]; t != nil {
+				t.Resize(size.X, size.Y)
+			}
+		}
+		out, m.viewports = render.Render(m.doc, opts)
 	}
 	m.lines = strings.Split(out, "\n")
 	m.lineWidth = render.MaxWidth(out)

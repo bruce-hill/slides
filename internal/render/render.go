@@ -454,7 +454,7 @@ func (r *renderer) viewport(n ast.Node, code string, color color.Color) string {
 	return strings.Join(box, "\n")
 }
 
-// TermSize returns the size of a demo's terminal. Terminals are 80% of the
+// termSize returns the size of a demo's terminal. Terminals are 80% of the
 // screen's width, and fill the height left over by the rest of the slide
 // unless the code block has a height=N option.
 func (r *renderer) termSize(n *ast.FencedCodeBlock) (cols, rows int) {
@@ -477,8 +477,6 @@ func (r *renderer) terminal(n *ast.FencedCodeBlock, t *term.Term) string {
 		r.numImages++
 		return " "
 	}
-	cols, rows := r.termSize(n)
-	t.Resize(cols, rows)
 	typing := r.Typing && n == r.Focused
 	title := "Demo"
 	switch {
@@ -502,9 +500,9 @@ func (r *renderer) terminal(n *ast.FencedCodeBlock, t *term.Term) string {
 	return r.heading(title, green) + "\n" + strings.Join(box, "\n")
 }
 
-// Render renders a document, sizing headings and boxes to match the widest
-// element on the slide. It also returns the slide's scrollable viewports.
-func Render(doc ast.Node, opts Options) (string, []Viewport) {
+// measure makes a renderer for a document, with the height left over by the
+// rest of the slide split between its images and terminals.
+func measure(doc ast.Node, opts Options) *renderer {
 	// Leave a margin on each side
 	r := &renderer{Options: opts, maxWidth: max(20, opts.TermW-4)}
 	if r.ImageCache == nil {
@@ -519,7 +517,30 @@ func Render(doc ast.Node, opts Options) (string, []Viewport) {
 	if r.numImages > 0 {
 		r.imageRows = max(8, (r.TermH-1-2-other)/r.numImages)
 	}
+	return r
+}
 
+// TermSizes returns the size (in columns and rows) that each demo's terminal
+// should be, which needs to be set before the document is rendered.
+func TermSizes(doc ast.Node, opts Options) map[ast.Node]image.Point {
+	r := measure(doc, opts)
+	sizes := map[ast.Node]image.Point{}
+	ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if n, ok := n.(*ast.FencedCodeBlock); ok && entering && string(n.Language(r.Src)) == "demo" {
+			cols, rows := r.termSize(n)
+			sizes[n] = image.Pt(cols, rows)
+		}
+		return ast.WalkContinue, nil
+	})
+	return sizes
+}
+
+// Render renders a document, sizing headings and boxes to match the widest
+// element on the slide. It also returns the slide's scrollable viewports.
+// Demos' terminals are drawn at their current size, which should be set
+// from TermSizes first.
+func Render(doc ast.Node, opts Options) (string, []Viewport) {
+	r := measure(doc, opts)
 	r.width = r.TermW / 4
 	r.width = MaxWidth(r.blocks(doc, "\n\n"))
 	r.viewports = nil

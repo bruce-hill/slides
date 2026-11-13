@@ -81,7 +81,10 @@ func TestTerminal(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	out, viewports := Render(doc, Options{Src: src, TermW: 100, TermH: 40, Focused: n, Typing: true, Terms: map[ast.Node]*term.Term{n: tm}})
+	opts := Options{Src: src, TermW: 100, TermH: 40, Focused: n, Typing: true, Terms: map[ast.Node]*term.Term{n: tm}}
+	size := TermSizes(doc, opts)[n]
+	tm.Resize(size.X, size.Y)
+	out, viewports := Render(doc, opts)
 	plain := ansi.Strip(out)
 	if !strings.Contains(plain, "Ctrl-]") || !strings.Contains(plain, "┃> echo hi") {
 		t.Errorf("terminal isn't drawn in a box with the code typed in:\n%s", plain)
