@@ -67,6 +67,9 @@ type Options struct {
 	Terms        map[ast.Node]*term.Term // Terminals for demo blocks
 	TermErrs     map[ast.Node]error      // Why demos' terminals couldn't be started
 	Typing       bool                    // Whether keys go to the focused terminal
+	// If nonzero, blocks that start at or after this offset in Src haven't
+	// been revealed yet, and are left blank
+	Reveal int
 }
 
 // Viewport is an embedded file that is too tall to show all at once, and is
@@ -85,8 +88,11 @@ type renderer struct {
 	maxWidth int // Width that text wraps at, which is narrower inside lists
 
 	measuring bool // Whether images and terminals are left out to measure the other content
-	numImages int  // Number of images and terminals found while measuring
-	imageRows int  // Maximum height of each image or terminal
+	// Whether blocks that haven't been revealed are left blank. They're drawn
+	// while measuring, so the slide's layout doesn't change as it's revealed.
+	revealing bool
+	numImages int // Number of images and terminals found while measuring
+	imageRows int // Maximum height of each image or terminal
 	viewports []Viewport
 }
 
@@ -135,12 +141,59 @@ func (r *renderer) boxLines(lines []string, lineNumbers bool, first, total int, 
 
 func (r *renderer) blocks(n ast.Node, sep string) string {
 	var parts []string
+	hidden := false
 	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		hidden = hidden || r.unrevealed(c)
 		if s := r.block(c); s != "" {
-			parts = append(parts, s)
+			parts = append(parts, r.blankIf(hidden, s))
 		}
 	}
 	return strings.Join(parts, sep)
+}
+
+// start returns where a node starts in the source, or -1 if it isn't known.
+func start(n ast.Node) int {
+	if t, ok := n.(*ast.Text); ok {
+		return t.Segment.Start
+	}
+	if n.Type() == ast.TypeBlock && n.Lines().Len() > 0 {
+		return n.Lines().At(0).Start
+	}
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		if s := start(c); s >= 0 {
+			return s
+		}
+	}
+	return -1
+}
+
+// Revealed reports whether a node is shown on a slide that has been revealed
+// up to an offset in its source (or all of it, if reveal is 0).
+func Revealed(n ast.Node, reveal int) bool {
+	// Inline nodes are revealed with the block they're in
+	for n.Type() == ast.TypeInline && n.Parent() != nil {
+		n = n.Parent()
+	}
+	return reveal == 0 || start(n) < reveal
+}
+
+// unrevealed reports whether a block should be left blank because it hasn't
+// been revealed yet. The blocks after it haven't been either.
+func (r *renderer) unrevealed(n ast.Node) bool {
+	return r.revealing && r.Reveal > 0 && start(n) >= r.Reveal
+}
+
+// blankIf replaces rendered text with spaces, if hidden is set, so it takes
+// up the same space without being seen.
+func (r *renderer) blankIf(hidden bool, s string) string {
+	if !hidden {
+		return s
+	}
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		lines[i] = strings.Repeat(" ", ansi.StringWidth(line))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // CodeText returns the raw text of a code block.
@@ -184,13 +237,15 @@ func (r *renderer) block(n ast.Node) string {
 		defer func() { r.maxWidth += 4 }()
 		var items []string
 		num := n.Start
+		hidden := false
 		for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+			hidden = hidden || r.unrevealed(c)
 			bullet := "\x1b[1m  ◆ \x1b[22m"
 			if n.IsOrdered() {
 				bullet = fmt.Sprintf("\x1b[1m%2d.\x1b[22m ", num)
 				num++
 			}
-			items = append(items, bullet+strings.ReplaceAll(r.blocks(c, sep), "\n", "\n    "))
+			items = append(items, r.blankIf(hidden, bullet+strings.ReplaceAll(r.blocks(c, sep), "\n", "\n    ")))
 		}
 		return strings.Join(items, sep)
 	case *ast.FencedCodeBlock:
@@ -548,18 +603,28 @@ func Render(doc ast.Node, opts Options) (string, []Viewport) {
 	r.width = r.TermW / 4
 	r.width = MaxWidth(r.blocks(doc, "\n\n"))
 	r.viewports = nil
+	r.revealing = true
 	lines := strings.Split(r.blocks(doc, "\n\n"), "\n")
 
-	// Find where each viewport ended up, and remove its marker
+	// Find where each viewport ended up, and remove its marker. Viewports
+	// that haven't been revealed don't have one.
+	found := make([]bool, len(r.viewports))
 	for row, line := range lines {
 		for _, m := range viewportMarkerRe.FindAllStringSubmatchIndex(line, -1) {
 			i, _ := strconv.Atoi(line[m[2]:m[3]])
 			r.viewports[i].Row = row
 			r.viewports[i].Col = ansi.StringWidth(line[:m[0]])
+			found[i] = true
 		}
 		lines[row] = viewportMarkerRe.ReplaceAllString(line, "")
 	}
-	return strings.Join(lines, "\n"), r.viewports
+	var viewports []Viewport
+	for i, v := range r.viewports {
+		if found[i] {
+			viewports = append(viewports, v)
+		}
+	}
+	return strings.Join(lines, "\n"), viewports
 }
 
 // Focusables returns the elements on a slide that can be activated with Enter.

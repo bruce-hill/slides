@@ -206,3 +206,22 @@ func TestViewport(t *testing.T) {
 		t.Errorf("viewport marker was left in the output")
 	}
 }
+
+func TestReveal(t *testing.T) {
+	src := []byte("# Title\n\n- one\n- two\n\nA [link](https://example.com).")
+	full, _ := Render(Parse(src), Options{Src: src, TermW: 80, TermH: 24})
+	reveal := strings.Index(string(src), "- two")
+	doc := Parse(src)
+	out, _ := Render(doc, Options{Src: src, TermW: 80, TermH: 24, Reveal: reveal})
+	plain := ansi.Strip(out)
+	if !strings.Contains(plain, "◆ one") || strings.Contains(plain, "two") || strings.Contains(plain, "link") {
+		t.Errorf("only the first item should be revealed:\n%s", plain)
+	}
+	if strings.Count(out, "\n") != strings.Count(full, "\n") || MaxWidth(out) != MaxWidth(full) {
+		t.Errorf("the partly revealed slide isn't the same size as the whole slide:\n%s", plain)
+	}
+	focusables := Focusables(doc, src)
+	if len(focusables) != 1 || Revealed(focusables[0], reveal) || !Revealed(focusables[0], 0) {
+		t.Errorf("the link shouldn't be revealed yet")
+	}
+}

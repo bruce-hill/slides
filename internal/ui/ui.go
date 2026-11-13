@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -39,17 +40,20 @@ type (
 	termOutputMsg   struct{}
 )
 
-// termKey identifies a demo's terminal by its slide and its position on the
-// slide, which stay the same when the slide is parsed again.
+// termKey identifies a demo's terminal by its slide's number and its position
+// on the slide, which stay the same when the slide is parsed again, and for
+// each step of a slide that's revealed a step at a time.
 type termKey struct{ slide, demo int }
 
 type model struct {
-	slides []deck.Slide
-	index  int
+	slides  []deck.Slide
+	index   int
+	numbers []int // The number of each slide, which its steps share
 
 	// State for the current slide
 	doc        ast.Node
-	focusables []ast.Node
+	focusables []ast.Node             // Revealed demos, links, and images
+	demos      []*ast.FencedCodeBlock // All of the slide's demos
 	focus      int
 	scrolls    map[ast.Node]int // Scroll positions of embedded file viewports
 	fileCache  map[string]string
@@ -97,15 +101,23 @@ func New(slides []deck.Slide) tea.Model {
 		slides: slides, start: time.Now(), input: input, querying: true,
 		terms: map[termKey]*term.Term{}, termErrs: map[termKey]error{}, termOutput: make(chan struct{}, 1),
 	}
+	for i, slide := range slides {
+		switch {
+		case i == 0:
+			m.numbers = append(m.numbers, 0)
+		case slide.Step == 0:
+			m.numbers = append(m.numbers, m.numbers[i-1]+1)
+		default:
+			m.numbers = append(m.numbers, m.numbers[i-1])
+		}
+	}
 	// Shells can take a while to start, so every demo's shell is started now,
 	// to be ready by the time its slide is shown
 	for i, slide := range slides {
-		src := []byte(slide.Text)
-		demo := 0
-		for _, n := range render.Focusables(render.Parse(src), src) {
-			if n, ok := n.(*ast.FencedCodeBlock); ok {
-				m.startTerm(termKey{i, demo}, n)
-				demo++
+		if slide.Step == 0 {
+			src := []byte(slide.Text)
+			for demo, n := range demos(render.Parse(src), src) {
+				m.startTerm(termKey{m.numbers[i], demo}, slide, n)
 			}
 		}
 	}
@@ -134,10 +146,21 @@ func (m *model) waitForOutput() tea.Cmd {
 	}
 }
 
+// demos returns the demos on a slide.
+func demos(doc ast.Node, src []byte) []*ast.FencedCodeBlock {
+	var demos []*ast.FencedCodeBlock
+	for _, n := range render.Focusables(doc, src) {
+		if n, ok := n.(*ast.FencedCodeBlock); ok {
+			demos = append(demos, n)
+		}
+	}
+	return demos
+}
+
 // startTerm starts a demo's terminal, with the demo's code typed in.
-func (m *model) startTerm(key termKey, n *ast.FencedCodeBlock) *term.Term {
-	code := render.CodeText(n, []byte(m.slides[key.slide].Text))
-	t, err := term.Start(m.slides[key.slide].Dir(), code, 80, 24, func() {
+func (m *model) startTerm(key termKey, slide deck.Slide, n *ast.FencedCodeBlock) *term.Term {
+	code := render.CodeText(n, []byte(slide.Text))
+	t, err := term.Start(slide.Dir(), code, 80, 24, func() {
 		select {
 		case m.termOutput <- struct{}{}:
 		default:
@@ -175,9 +198,16 @@ func (m *model) dir() string { return m.slides[m.index].Dir() }
 
 func (m *model) loadSlide(index int) {
 	m.index = max(0, min(len(m.slides)-1, index))
-	src := []byte(m.slides[m.index].Text)
+	slide := m.slides[m.index]
+	src := []byte(slide.Text)
 	m.doc = render.Parse(src)
-	m.focusables = render.Focusables(m.doc, src)
+	m.focusables = nil
+	for _, n := range render.Focusables(m.doc, src) {
+		if render.Revealed(n, slide.Reveal) {
+			m.focusables = append(m.focusables, n)
+		}
+	}
+	m.demos = demos(m.doc, src)
 	m.focus = 0
 	m.scrolls = map[ast.Node]int{}
 	m.fileCache = map[string]string{}
@@ -185,15 +215,13 @@ func (m *model) loadSlide(index int) {
 	m.scroll = 0
 	m.typing, m.zoomed = false, false
 	m.slideTerms = map[ast.Node]*term.Term{}
-	for _, n := range m.focusables {
-		if n, ok := n.(*ast.FencedCodeBlock); ok {
-			t := m.terms[m.demoKey(n)]
-			if t == nil {
-				t = m.startTerm(m.demoKey(n), n)
-			}
-			if t != nil {
-				m.slideTerms[n] = t
-			}
+	for _, n := range m.demos {
+		t := m.terms[m.demoKey(n)]
+		if t == nil {
+			t = m.startTerm(m.demoKey(n), slide, n)
+		}
+		if t != nil {
+			m.slideTerms[n] = t
 		}
 	}
 	m.rerender()
@@ -202,11 +230,9 @@ func (m *model) loadSlide(index int) {
 // slideTermErrs returns why the current slide's terminals couldn't be started.
 func (m *model) slideTermErrs() map[ast.Node]error {
 	errs := map[ast.Node]error{}
-	for _, n := range m.focusables {
-		if n, ok := n.(*ast.FencedCodeBlock); ok {
-			if err := m.termErrs[m.demoKey(n)]; err != nil {
-				errs[n] = err
-			}
+	for _, n := range m.demos {
+		if err := m.termErrs[m.demoKey(n)]; err != nil {
+			errs[n] = err
 		}
 	}
 	return errs
@@ -214,16 +240,7 @@ func (m *model) slideTermErrs() map[ast.Node]error {
 
 // demoKey returns the key for a demo on the current slide.
 func (m *model) demoKey(n *ast.FencedCodeBlock) termKey {
-	demo := 0
-	for _, f := range m.focusables {
-		if f == n {
-			break
-		}
-		if _, ok := f.(*ast.FencedCodeBlock); ok {
-			demo++
-		}
-	}
-	return termKey{m.index, demo}
+	return termKey{m.numbers[m.index], slices.Index(m.demos, n)}
 }
 
 func (m *model) focused() ast.Node {
@@ -253,6 +270,7 @@ func (m *model) rerender() {
 			Src: []byte(text), Dir: m.dir(), TermW: m.width, TermH: m.height,
 			Focused: m.focused(), Kitty: m.kitty, Scrolls: m.scrolls, FileCache: m.fileCache,
 			ImageCache: m.imageCache, Terms: m.slideTerms, TermErrs: m.slideTermErrs(), Typing: m.typing,
+			Reveal: m.slides[m.index].Reveal,
 		}
 		for n, size := range render.TermSizes(m.doc, opts) {
 			if t := m.slideTerms[n]; t != nil {
@@ -380,6 +398,8 @@ func (m *model) zoom() tea.Cmd {
 	return cmd
 }
 
+// findSlide goes to the next (or previous) slide that contains the search
+// text, with all of its steps revealed.
 func (m *model) findSlide(step int) {
 	query := strings.ToLower(m.search)
 	if query == "" {
@@ -388,11 +408,22 @@ func (m *model) findSlide(step int) {
 	n := len(m.slides)
 	for offset := 1; offset <= n; offset++ {
 		i := ((m.index+step*offset)%n + n) % n
-		if strings.Contains(strings.ToLower(m.slides[i].Text), query) {
-			m.loadSlide(i)
+		if m.numbers[i] != m.numbers[m.index] && strings.Contains(strings.ToLower(m.slides[i].Text), query) {
+			m.loadSlide(m.lastStep(m.numbers[i]))
 			return
 		}
 	}
+}
+
+// firstStep returns the index of a slide's first step, given its number.
+func (m *model) firstStep(number int) int {
+	i, _ := slices.BinarySearch(m.numbers, number)
+	return i
+}
+
+// lastStep returns the index of a slide's last step, given its number.
+func (m *model) lastStep(number int) int {
+	return m.firstStep(number+1) - 1
 }
 
 // openExternal opens a link or file in another program, and reports an error
@@ -425,7 +456,7 @@ func (m *model) activate() tea.Cmd {
 			t.Close()
 			delete(m.terms, m.demoKey(n))
 			delete(m.slideTerms, n)
-			if t = m.startTerm(m.demoKey(n), n); t == nil {
+			if t = m.startTerm(m.demoKey(n), m.slides[m.index], n); t == nil {
 				m.rerender()
 				return nil
 			}
@@ -465,7 +496,7 @@ func (m *model) updatePrompt(msg tea.KeyPressMsg) tea.Cmd {
 		value := m.input.Value()
 		if m.prompt == gotoPrompt {
 			if n, err := strconv.Atoi(value); err == nil {
-				m.loadSlide(n - 1)
+				m.loadSlide(m.firstStep(max(0, n-1)))
 			}
 		} else {
 			m.search = value
@@ -682,7 +713,7 @@ func (m *model) View() tea.View {
 				left += "  \x1b[31;1m" + ansi.Truncate(m.err.Error(), max(0, m.width-20), "…") + "\x1b[m"
 			}
 		}
-		right := fmt.Sprintf("\x1b[2m%d/%d\x1b[22m", m.index+1, len(m.slides))
+		right := fmt.Sprintf("\x1b[2m%d/%d\x1b[22m", m.numbers[m.index]+1, m.numbers[len(m.numbers)-1]+1)
 		gap := max(1, m.width-ansi.StringWidth(left)-ansi.StringWidth(right))
 		rows[m.height-1] = left + strings.Repeat(" ", gap) + right
 	}

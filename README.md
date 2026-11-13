@@ -8,7 +8,8 @@ with [Bubble Tea](https://github.com/charmbracelet/bubbletea) and
 
 To run the slides program from this directory, run `go run ./cmd/slides examples/sample.md`
 
-Slides are separated by lines of three or more dashes (`---`). Any non-markdown
+Slides are separated by lines of three or more dashes (`---`). A line with
+`<!-- pause -->` splits a slide into steps, which are revealed one at a time. Any non-markdown
 file passed on the command line is shown as a single syntax-highlighted slide.
 
 ## Features

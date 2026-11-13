@@ -28,6 +28,22 @@ You can also type in a slide number and hit **Enter** to go to that slide.
 
 ---------------------------------------------------------
 
+# Step by Step
+
+A slide can be revealed a step at a time,
+
+<!-- pause -->
+
+by putting `<!-- pause -->` on a line by itself:
+
+<!-- pause -->
+
+- Each step
+<!-- pause -->
+- reveals a little more
+
+---------------------------------------------------------
+
 # Basic Features
 
 This is **italic**, *bold*, and `inline code`

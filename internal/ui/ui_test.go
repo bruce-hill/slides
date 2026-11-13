@@ -181,3 +181,45 @@ func TestErrors(t *testing.T) {
 		t.Errorf("the error isn't shown in the status bar:\n%s", plain)
 	}
 }
+
+func TestSteps(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // Without the user's .bashrc
+	t.Setenv("SHELL", "bash")
+	text, pauses := deck.Steps("```demo\necho hi\n```\n\n<!-- pause -->\n\n[link](https://example.com)")
+	m := New([]deck.Slide{
+		{Filename: "a.md", Text: "one"},
+		{Filename: "a.md", Text: text, Reveal: pauses[0]},
+		{Filename: "a.md", Text: text, Step: 1},
+		{Filename: "a.md", Text: "three"},
+	}).(*model)
+	defer m.quit()
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m.Update(queryTimeoutMsg{})
+	m.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	if len(m.terms) != 1 {
+		t.Errorf("%d demo shells were started, want 1 shared by both steps", len(m.terms))
+	}
+	plain := ansi.Strip(m.View().Content)
+	if strings.Contains(plain, "link") || len(m.focusables) != 1 || !strings.HasSuffix(plain, "2/3") {
+		t.Errorf("the first step should only show the demo, as slide 2 of 3:\n%s", plain)
+	}
+	first := m.slideTerms[m.focusables[0]]
+	m.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	plain = ansi.Strip(m.View().Content)
+	if !strings.Contains(plain, "link") || len(m.focusables) != 2 || !strings.HasSuffix(plain, "2/3") {
+		t.Errorf("the second step should show the link too, as slide 2 of 3:\n%s", plain)
+	}
+	if m.slideTerms[m.focusables[0]] != first {
+		t.Errorf("the second step has a different terminal for the demo")
+	}
+	m.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if m.index != 3 {
+		t.Errorf("going to slide 3 went to step %d, want 3", m.index)
+	}
+	m.Update(tea.KeyPressMsg{Code: '2', Text: "2"})
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if m.index != 1 {
+		t.Errorf("going to slide 2 went to step %d, want its first step, 1", m.index)
+	}
+}
