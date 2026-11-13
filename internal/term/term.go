@@ -22,13 +22,14 @@ import (
 
 // Term is a shell running in a virtual terminal.
 type Term struct {
-	mu     sync.Mutex
-	emu    *vt.Emulator
-	pty    *os.File
-	cmd    *exec.Cmd
-	exited bool
-	setUp  bool // Whether the prompt has been set
-	pasted bool // Whether the input has been pasted, after which the screen is shown
+	mu      sync.Mutex
+	emu     *vt.Emulator
+	pty     *os.File
+	cmd     *exec.Cmd
+	exited  bool
+	setUp   bool // Whether the prompt setup has been typed in
+	entered bool // Whether Enter has been pressed to run it
+	pasted  bool // Whether the input has been pasted, after which the screen is shown
 }
 
 // readyOSC is a private OSC sequence that the shell prints once its prompt
@@ -110,6 +111,7 @@ func Start(dir, input string, cols, rows int, notify func()) (*Term, error) {
 			time.AfterFunc(200*time.Millisecond, func() {
 				t.mu.Lock()
 				defer t.mu.Unlock()
+				t.entered = true
 				t.emu.SendText("\r")
 			})
 		}
@@ -126,6 +128,12 @@ func Start(dir, input string, cols, rows int, notify func()) (*Term, error) {
 		}
 	}
 	t.emu.RegisterOscHandler(readyOSC, func([]byte) bool {
+		if t.setUp && !t.entered {
+			// The PROMPT_COMMAND ran after all, but the prompt setup has
+			// been typed in, and will say when it's ready once it runs
+			logf("the prompt was set up before the typed setup ran")
+			return true
+		}
 		// The prompt is ready, but until the shell's line editor starts
 		// reading input, the terminal would echo the input back as is
 		logf("the prompt is set up")
@@ -152,11 +160,11 @@ func Start(dir, input string, cols, rows int, notify func()) (*Term, error) {
 		case !knownShell:
 			paste()
 		case name == "bash":
-			// The PROMPT_COMMAND says when the prompt is ready right around
-			// now, unless the user's configuration replaced it. (Typing it in
-			// isn't the first choice, because ble.sh doesn't run commands
-			// typed in while it's starting.)
-			time.AfterFunc(time.Second, func() {
+			// The PROMPT_COMMAND says when the prompt is ready within a few
+			// milliseconds, unless the user's configuration replaced it.
+			// (Typing it in isn't the first choice, because ble.sh doesn't
+			// run commands typed in while it's starting.)
+			time.AfterFunc(250*time.Millisecond, func() {
 				t.mu.Lock()
 				defer t.mu.Unlock()
 				typeSetup()
