@@ -20,9 +20,11 @@ file passed on the command line is shown as a single syntax-highlighted slide.
 - Images (`![](image.png)`) are drawn in the terminal, sized to fill the space
   left over by the rest of the slide (up to 80% of the width, and at most twice
   their natural size). `![width=50%](...)` and `![height=50%](...)` set the
-  maximum width or height as a percentage of the terminal instead. In [kitty](https://sw.kovidgoyal.net/kitty/),
-  images are shown at full resolution with the kitty graphics protocol; other
-  terminals get a lower resolution version made of colored characters
+  maximum width or height as a percentage of the terminal instead. In terminals that support the
+  [kitty graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/)
+  with Unicode placeholders (like kitty and Ghostty), images are shown at full
+  resolution; other terminals get a lower resolution version made of colored
+  characters
 - Other files can be embedded with `![title](file.txt)`. Files taller than half
   the screen are shown in a box that scrolls with the mouse wheel
 - Links can be opened with **Enter**

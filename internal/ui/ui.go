@@ -14,6 +14,7 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yuin/goldmark/ast"
 
@@ -31,9 +32,10 @@ const (
 )
 
 type (
-	tickMsg     time.Time
-	demoDoneMsg struct{}
-	wheelMsg    struct{}
+	tickMsg         time.Time
+	demoDoneMsg     struct{}
+	wheelMsg        struct{}
+	queryTimeoutMsg struct{}
 )
 
 type model struct {
@@ -66,16 +68,18 @@ type model struct {
 	wheelMouse   tea.Mouse
 	wheelPending bool
 	kitty        *render.Kitty // nil if the terminal doesn't support kitty graphics
+
+	// Slides aren't drawn until the terminal has said whether it supports
+	// kitty graphics, so images aren't drawn twice in different ways.
+	querying   bool
+	kittyReply bool
 }
 
 // New creates a presenter for the given slides.
 func New(slides []deck.Slide) tea.Model {
 	input := textinput.New()
 	input.Prompt = ""
-	m := &model{slides: slides, start: time.Now(), input: input}
-	if render.KittySupported() {
-		m.kitty = render.NewKitty()
-	}
+	m := &model{slides: slides, start: time.Now(), input: input, querying: true}
 	m.loadSlide(0)
 	return m
 }
@@ -84,7 +88,30 @@ func tick() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
 }
 
-func (m *model) Init() tea.Cmd { return tick() }
+func (m *model) Init() tea.Cmd {
+	// In case the terminal never answers
+	timeout := tea.Tick(time.Second, func(time.Time) tea.Msg { return queryTimeoutMsg{} })
+	return tea.Batch(tick(), tea.Raw(render.KittyQuery), timeout)
+}
+
+// queryDone finishes checking the terminal for kitty graphics support.
+func (m *model) queryDone() {
+	if !m.querying {
+		return
+	}
+	m.querying = false
+	if m.kittyReply && render.KittyPlaceholders() {
+		m.kitty = render.NewKitty()
+		m.setCellSize()
+	}
+	m.rerender()
+}
+
+func (m *model) setCellSize() {
+	if w, h, ok := cellSize(); ok && m.kitty != nil {
+		m.kitty.CellW, m.kitty.CellH = w, h
+	}
+}
 
 func (m *model) dir() string { return m.slides[m.index].Dir() }
 
@@ -112,7 +139,7 @@ func (m *model) focused() ast.Node {
 // rerender redraws the slide's content, which is only needed when something
 // other than the scroll position changes.
 func (m *model) rerender() {
-	if m.width == 0 {
+	if m.width == 0 || m.querying {
 		return
 	}
 	text := m.slides[m.index].Text
@@ -299,10 +326,14 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		if w, h, ok := cellSize(); ok && m.kitty != nil {
-			m.kitty.CellW, m.kitty.CellH = w, h
-		}
+		m.setCellSize()
 		m.rerender()
+	case uv.KittyGraphicsEvent:
+		if msg.Options.ID == render.KittyQueryID && string(msg.Payload) == "OK" {
+			m.kittyReply = true
+		}
+	case uv.PrimaryDeviceAttributesEvent, queryTimeoutMsg:
+		m.queryDone()
 	case tickMsg:
 		return tick()
 	case demoDoneMsg:

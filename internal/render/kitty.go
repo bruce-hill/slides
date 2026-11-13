@@ -13,10 +13,22 @@ import (
 	"golang.org/x/image/draw"
 )
 
-// KittySupported reports whether the terminal supports the kitty graphics
-// protocol. Multiplexers like tmux don't pass the protocol through.
-func KittySupported() bool {
-	return (os.Getenv("TERM") == "xterm-kitty" || os.Getenv("KITTY_WINDOW_ID") != "") && os.Getenv("TMUX") == ""
+// KittyQueryID is the image ID used by KittyQuery.
+const KittyQueryID = 31
+
+// KittyQuery asks the terminal whether it supports the kitty graphics
+// protocol. Terminals that do reply to the graphics query before replying to
+// the device attributes request after it, which all terminals answer.
+// Multiplexers like tmux answer the device attributes request themselves
+// without passing the graphics query through.
+var KittyQuery = ansi.KittyGraphics([]byte("AAAA"), fmt.Sprintf("i=%d", KittyQueryID), "s=1", "v=1", "a=q", "t=d", "f=24") +
+	ansi.RequestPrimaryDeviceAttributes
+
+// KittyPlaceholders reports whether a terminal that supports the kitty
+// graphics protocol can also draw images with Unicode placeholders. WezTerm
+// and Konsole support the protocol, but not placeholders.
+func KittyPlaceholders() bool {
+	return os.Getenv("TERM_PROGRAM") != "WezTerm" && os.Getenv("KONSOLE_VERSION") == ""
 }
 
 // Kitty displays images with the kitty graphics protocol. Images are sent to
