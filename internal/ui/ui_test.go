@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -164,5 +165,19 @@ func TestDemosStartEarly(t *testing.T) {
 	m.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
 	if len(m.slideTerms) != 2 || m.slideTerms[m.focusables[0]] != first || len(m.terms) != 2 {
 		t.Errorf("the demo shells started early weren't used on their slide")
+	}
+}
+
+func TestErrors(t *testing.T) {
+	t.Setenv("SHELL", "/nonexistent/shell")
+	m := newModel(t, "```demo\necho hi\n```")
+	defer m.quit()
+	m.Update(queryTimeoutMsg{})
+	if plain := ansi.Strip(m.View().Content); !strings.Contains(plain, "couldn't start a shell") {
+		t.Errorf("the reason the demo's shell couldn't start isn't shown:\n%s", plain)
+	}
+	m.Update(errorMsg{errors.New("couldn't open nowhere")})
+	if plain := ansi.Strip(m.View().Content); !strings.Contains(plain, "couldn't open nowhere") {
+		t.Errorf("the error isn't shown in the status bar:\n%s", plain)
 	}
 }

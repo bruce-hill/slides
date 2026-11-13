@@ -33,6 +33,7 @@ const (
 
 type (
 	tickMsg         time.Time
+	errorMsg        struct{ err error }
 	wheelMsg        struct{}
 	queryTimeoutMsg struct{}
 	termOutputMsg   struct{}
@@ -64,6 +65,8 @@ type model struct {
 	prompt        promptMode
 	input         textinput.Model
 	search        string
+	err           error     // An error shown in the status bar
+	errTime       time.Time // When the error happened
 
 	// Mouse wheel events are added up and handled together, so scrolling
 	// quickly doesn't queue up more redraws than can keep up.
@@ -79,6 +82,7 @@ type model struct {
 
 	// Each demo has a terminal, which keeps running after leaving its slide
 	terms      map[termKey]*term.Term
+	termErrs   map[termKey]error       // Why terminals couldn't be started
 	slideTerms map[ast.Node]*term.Term // Terminals on the current slide
 	typing     bool                    // Whether keys go to the focused terminal
 	zoomed     bool                    // Whether that terminal fills the screen
@@ -91,7 +95,7 @@ func New(slides []deck.Slide) tea.Model {
 	input.Prompt = ""
 	m := &model{
 		slides: slides, start: time.Now(), input: input, querying: true,
-		terms: map[termKey]*term.Term{}, termOutput: make(chan struct{}, 1),
+		terms: map[termKey]*term.Term{}, termErrs: map[termKey]error{}, termOutput: make(chan struct{}, 1),
 	}
 	// Shells can take a while to start, so every demo's shell is started now,
 	// to be ready by the time its slide is shown
@@ -140,8 +144,10 @@ func (m *model) startTerm(key termKey, n *ast.FencedCodeBlock) *term.Term {
 		}
 	})
 	if err != nil {
+		m.termErrs[key] = err
 		return nil
 	}
+	delete(m.termErrs, key)
 	m.terms[key] = t
 	return t
 }
@@ -193,6 +199,19 @@ func (m *model) loadSlide(index int) {
 	m.rerender()
 }
 
+// slideTermErrs returns why the current slide's terminals couldn't be started.
+func (m *model) slideTermErrs() map[ast.Node]error {
+	errs := map[ast.Node]error{}
+	for _, n := range m.focusables {
+		if n, ok := n.(*ast.FencedCodeBlock); ok {
+			if err := m.termErrs[m.demoKey(n)]; err != nil {
+				errs[n] = err
+			}
+		}
+	}
+	return errs
+}
+
 // demoKey returns the key for a demo on the current slide.
 func (m *model) demoKey(n *ast.FencedCodeBlock) termKey {
 	demo := 0
@@ -233,7 +252,7 @@ func (m *model) rerender() {
 		opts := render.Options{
 			Src: []byte(text), Dir: m.dir(), TermW: m.width, TermH: m.height,
 			Focused: m.focused(), Kitty: m.kitty, Scrolls: m.scrolls, FileCache: m.fileCache,
-			ImageCache: m.imageCache, Terms: m.slideTerms, Typing: m.typing,
+			ImageCache: m.imageCache, Terms: m.slideTerms, TermErrs: m.slideTermErrs(), Typing: m.typing,
 		}
 		for n, size := range render.TermSizes(m.doc, opts) {
 			if t := m.slideTerms[n]; t != nil {
@@ -376,14 +395,18 @@ func (m *model) findSlide(step int) {
 	}
 }
 
-func openExternal(target string) {
+// openExternal opens a link or file in another program, and reports an error
+// if it couldn't be opened.
+func openExternal(target string) tea.Cmd {
 	opener := "xdg-open"
 	if runtime.GOOS == "darwin" {
 		opener = "open"
 	}
-	cmd := exec.Command(opener, target)
-	if cmd.Start() == nil {
-		go cmd.Wait()
+	return func() tea.Msg {
+		if err := exec.Command(opener, target).Run(); err != nil {
+			return errorMsg{fmt.Errorf("couldn't open %s: %w", target, err)}
+		}
+		return nil
 	}
 }
 
@@ -391,6 +414,7 @@ func openExternal(target string) {
 // it has exited), or opens the focused link or image.
 func (m *model) activate() tea.Cmd {
 	src := []byte(m.slides[m.index].Text)
+	var cmd tea.Cmd
 	switch n := m.focused().(type) {
 	case *ast.FencedCodeBlock:
 		t := m.slideTerms[n]
@@ -411,20 +435,20 @@ func (m *model) activate() tea.Cmd {
 		m.rerender()
 		return nil
 	case *ast.Link:
-		openExternal(string(n.Destination))
+		cmd = openExternal(string(n.Destination))
 	case *ast.AutoLink:
-		openExternal(string(n.URL(src)))
+		cmd = openExternal(string(n.URL(src)))
 	case *ast.Image:
 		dest := string(n.Destination)
 		if !filepath.IsAbs(dest) {
 			dest = filepath.Join(m.dir(), dest)
 		}
-		openExternal(dest)
+		cmd = openExternal(dest)
 	default:
 		return nil
 	}
 	m.moveFocus(1)
-	return nil
+	return cmd
 }
 
 func (m *model) moveFocus(delta int) {
@@ -513,6 +537,8 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 		m.queryDone()
 	case tickMsg:
 		return tick()
+	case errorMsg:
+		m.err, m.errTime = msg.err, time.Now()
 	case termOutputMsg:
 		if t := m.typingTerm(); t != nil && t.Exited() {
 			m.stopTyping()
@@ -652,6 +678,9 @@ func (m *model) View() tea.View {
 				left += "  Demo (press Ctrl-] to return to the slides)"
 			}
 			left = "\x1b[2m" + left + "\x1b[22m"
+			if m.err != nil && time.Since(m.errTime) < 5*time.Second {
+				left += "  \x1b[31;1m" + ansi.Truncate(m.err.Error(), max(0, m.width-20), "…") + "\x1b[m"
+			}
 		}
 		right := fmt.Sprintf("\x1b[2m%d/%d\x1b[22m", m.index+1, len(m.slides))
 		gap := max(1, m.width-ansi.StringWidth(left)-ansi.StringWidth(right))

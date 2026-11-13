@@ -84,6 +84,7 @@ func Start(dir, input string, cols, rows int, notify func()) (*Term, error) {
 	}
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
 	if err != nil {
+		debugLog.Printf("couldn't start %s: %v", shell, err)
 		return nil, err
 	}
 

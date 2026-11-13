@@ -65,6 +65,7 @@ type Options struct {
 	FileCache    map[string]string       // Highlighted contents of embedded files
 	ImageCache   map[string]image.Image  // Decoded images
 	Terms        map[ast.Node]*term.Term // Terminals for demo blocks
+	TermErrs     map[ast.Node]error      // Why demos' terminals couldn't be started
 	Typing       bool                    // Whether keys go to the focused terminal
 }
 
@@ -201,6 +202,9 @@ func (r *renderer) block(n ast.Node) string {
 			}
 			// The demo's terminal couldn't be started
 			title := "Demo"
+			if err := r.TermErrs[n]; err != nil {
+				title = ansi.Truncate("Demo (couldn't start a shell: "+err.Error()+")", r.maxWidth, "…")
+			}
 			prompt := "\x1b[33;1m$\x1b[m " + highlight.Highlight(code, highlight.LexerFor("bash"))
 			return r.heading(title, green) + "\n" + r.box(prompt, false, green)
 		default:
