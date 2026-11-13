@@ -15,7 +15,6 @@ file passed on the command line is shown as a single syntax-highlighted slide.
 
 - Markdown formatting, lists, block quotes, tables, and syntax-highlighted code
   blocks. Text is wrapped to fit the terminal
-- ` ```run ` code blocks are run in bash and show their output
 - ` ```demo ` code blocks are run interactively when you press **Enter**
 - Images (`![](image.png)`) are drawn in the terminal, sized to fill the space
   left over by the rest of the slide (up to 80% of the width, and at most twice
@@ -42,7 +41,7 @@ file passed on the command line is shown as a single syntax-highlighted slide.
 | Ctrl-U, Ctrl-D, PgUp, PgDn       | Scroll by 10 lines                     |
 | Tab, Shift-Tab                   | Cycle the focused demo, link, or image |
 | Enter                            | Run/open the focused item              |
-| r, Ctrl-R                        | Redraw and rerun `run` blocks          |
+| r, Ctrl-R                        | Redraw                                 |
 | `                                | Toggle viewing the slide's source      |
 | Ctrl-Z                           | Suspend                                |
 | q, Ctrl-C                        | Quit                                   |

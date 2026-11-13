@@ -46,7 +46,6 @@ type model struct {
 	doc        ast.Node
 	focusables []ast.Node
 	focus      int
-	runCache   map[ast.Node]string
 	scrolls    map[ast.Node]int // Scroll positions of embedded file viewports
 	fileCache  map[string]string
 	imageCache map[string]image.Image
@@ -121,7 +120,6 @@ func (m *model) loadSlide(index int) {
 	m.doc = render.Parse(src)
 	m.focusables = render.Focusables(m.doc, src)
 	m.focus = 0
-	m.runCache = map[ast.Node]string{}
 	m.scrolls = map[ast.Node]int{}
 	m.fileCache = map[string]string{}
 	m.imageCache = map[string]image.Image{}
@@ -150,7 +148,7 @@ func (m *model) rerender() {
 	} else if strings.TrimSpace(text) != "" {
 		out, m.viewports = render.Render(m.doc, render.Options{
 			Src: []byte(text), Dir: m.dir(), TermW: m.width, TermH: m.height,
-			Focused: m.focused(), RunCache: m.runCache, Kitty: m.kitty, Scrolls: m.scrolls, FileCache: m.fileCache,
+			Focused: m.focused(), Kitty: m.kitty, Scrolls: m.scrolls, FileCache: m.fileCache,
 			ImageCache: m.imageCache,
 		})
 	}
@@ -382,8 +380,8 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 		case "ctrl+d", "pgdown":
 			m.setScroll(m.scroll + 10)
 		case "r", "ctrl+r":
-			m.runCache = map[ast.Node]string{}
 			m.rerender()
+			return m.resetImages()
 		case "ctrl+z":
 			return tea.Suspend
 		case "enter":

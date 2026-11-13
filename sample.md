@@ -48,12 +48,6 @@ The paragraph continues on line two.
 | Tables | *work*    |
 | too    | `!`       |
 
-Here's a shell example:
-
-```run
-ls --color=auto
-```
-
 ---------------------------------------------------------
 
 # Demos
@@ -131,36 +125,10 @@ Supported!
 
 ---------------------------------------------------------
 
-# Re-running Code
-
-You can re-run code by pressing **Ctrl-R** or **R**.
-
-It is currently:
-
-```run
-date
-```
-
-Some random numbers:
-
-```run
-openssl rand -hex 16
-```
-
-```run
-hexdump -n 128 /dev/urandom
-```
-
----------------------------------------------------------
-
 # Inspecting the Source
 
 You can inspect a slide's code at any point using
 the **Backtick** key `` ` ``
-
-```run
-hexdump -n 128 /dev/urandom
-```
 
 ---------------------------------------------------------
 

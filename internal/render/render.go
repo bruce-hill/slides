@@ -2,17 +2,14 @@
 package render
 
 import (
-	"context"
 	"fmt"
 	"image"
 	"image/color"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/table"
@@ -33,10 +30,9 @@ func Parse(src []byte) ast.Node {
 }
 
 var (
-	green  = lipgloss.Color("2")
-	yellow = lipgloss.Color("3")
-	blue   = lipgloss.Color("4")
-	cyan   = lipgloss.Color("6")
+	green = lipgloss.Color("2")
+	blue  = lipgloss.Color("4")
+	cyan  = lipgloss.Color("6")
 )
 
 // wrap surrounds each line of s with the given SGR on/off codes, so that every
@@ -63,7 +59,6 @@ type Options struct {
 	Dir          string // Directory that relative paths are resolved from
 	TermW, TermH int
 	Focused      ast.Node               // The focused demo, link, or image
-	RunCache     map[ast.Node]string    // Output of ```run blocks
 	Kitty        *Kitty                 // If set, images use the kitty graphics protocol
 	Scrolls      map[ast.Node]int       // Scroll position of each embedded file viewport
 	FileCache    map[string]string      // Highlighted contents of embedded files
@@ -197,9 +192,6 @@ func (r *renderer) block(n ast.Node) string {
 	case *ast.FencedCodeBlock:
 		code := CodeText(n, r.Src)
 		switch lang := string(n.Language(r.Src)); lang {
-		case "run":
-			prompt := "\x1b[33;1m$\x1b[m " + highlight.Highlight(code, highlight.LexerFor("bash"))
-			return r.box(prompt+"\n"+r.run(n, code), false, yellow)
 		case "demo":
 			title := "Demo"
 			if n == r.Focused {
@@ -456,26 +448,6 @@ func (r *renderer) viewport(n ast.Node, code string, color color.Color) string {
 	})
 	box[0] = fmt.Sprintf("\x1b_viewport%d\x1b\\", len(r.viewports)-1) + box[0]
 	return strings.Join(box, "\n")
-}
-
-// run executes a ```run code block and returns its output. Output is cached
-// so that redraws don't rerun the code.
-func (r *renderer) run(n ast.Node, code string) string {
-	if out, ok := r.RunCache[n]; ok {
-		return out
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "bash", "-c", strings.TrimSpace(code))
-	cmd.Dir = r.Dir
-	output, err := cmd.CombinedOutput()
-	out := strings.ReplaceAll(strings.TrimRight(string(output), "\n"), "\r", "")
-	out = strings.ReplaceAll(out, "\t", "    ")
-	if err != nil {
-		out += "\n" + wrap("31;1", "22;39", err.Error())
-	}
-	r.RunCache[n] = out
-	return out
 }
 
 // Render renders a document, sizing headings and boxes to match the widest

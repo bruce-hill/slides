@@ -20,7 +20,7 @@ func TestRender(t *testing.T) {
 	if len(focusables) != 2 {
 		t.Fatalf("got %d focusables, want 2 (a link and a demo)", len(focusables))
 	}
-	out, _ := Render(doc, Options{Src: src, TermW: 80, TermH: 24, Focused: focusables[1], RunCache: map[ast.Node]string{}})
+	out, _ := Render(doc, Options{Src: src, TermW: 80, TermH: 24, Focused: focusables[1]})
 	plain := ansi.Strip(out)
 	for _, want := range []string{"Title", "Some text and a link.", "◆ one", "Demo (press Enter to run)", "$ echo hi"} {
 		if !strings.Contains(plain, want) {
@@ -37,7 +37,7 @@ func TestRender(t *testing.T) {
 func TestWrap(t *testing.T) {
 	long := strings.Repeat("word ", 30)
 	src := []byte("# " + long + "\n\n" + long + "\n\n- " + long + "\n  - " + long + "\n")
-	out, _ := Render(Parse(src), Options{Src: src, TermW: 40, TermH: 24, RunCache: map[ast.Node]string{}})
+	out, _ := Render(Parse(src), Options{Src: src, TermW: 40, TermH: 24})
 	if w := MaxWidth(out); w > 36 {
 		t.Errorf("text is %d columns wide, which doesn't fit in a 40 column terminal with margins:\n%s", w, ansi.Strip(out))
 	}
@@ -51,21 +51,12 @@ func TestWrap(t *testing.T) {
 
 func TestTable(t *testing.T) {
 	src := []byte("| Name | Count |\n|------|------:|\n| *apples* | 3 |\n| pears | 12 |\n")
-	out, _ := Render(Parse(src), Options{Src: src, TermW: 80, TermH: 24, RunCache: map[ast.Node]string{}})
+	out, _ := Render(Parse(src), Options{Src: src, TermW: 80, TermH: 24})
 	plain := ansi.Strip(out)
 	for _, want := range []string{"│ Name   │ Count │", "│ apples │     3 │", "│ pears  │    12 │"} {
 		if !strings.Contains(plain, want) {
 			t.Errorf("table is missing %q:\n%s", want, plain)
 		}
-	}
-}
-
-func TestRun(t *testing.T) {
-	src := []byte("```run\necho hello\n```\n")
-	rendered, _ := Render(Parse(src), Options{Src: src, Dir: ".", TermW: 80, TermH: 24, RunCache: map[ast.Node]string{}})
-	out := ansi.Strip(rendered)
-	if !strings.Contains(out, "│ hello") {
-		t.Errorf("run block output is missing:\n%s", out)
 	}
 }
 
@@ -114,7 +105,7 @@ func TestImageFitsSlide(t *testing.T) {
 	f.Close()
 
 	src := []byte("# Title\n\n![](tall.png)\n\n- one\n- two\n- three\n")
-	out, _ := Render(Parse(src), Options{Src: src, Dir: dir, TermW: 100, TermH: 40, RunCache: map[ast.Node]string{}})
+	out, _ := Render(Parse(src), Options{Src: src, Dir: dir, TermW: 100, TermH: 40})
 	if lines := strings.Count(out, "\n") + 1; lines > 39 {
 		t.Errorf("slide is %d lines tall, which doesn't fit in a 40 line terminal", lines)
 	}
@@ -127,7 +118,7 @@ func TestImageCentered(t *testing.T) {
 	f.Close()
 
 	src := []byte("# A title that is wider than the image\n\n![width=10%](small.png)\n")
-	out, _ := Render(Parse(src), Options{Src: src, Dir: dir, TermW: 100, TermH: 40, RunCache: map[ast.Node]string{}})
+	out, _ := Render(Parse(src), Options{Src: src, Dir: dir, TermW: 100, TermH: 40})
 	lines := strings.Split(ansi.Strip(out), "\n")
 	title, img := lines[1], lines[4]
 	left, right := len(img)-len(strings.TrimLeft(img, " ")), MaxWidth(title)-ansi.StringWidth(strings.TrimRight(img, " "))
@@ -158,7 +149,7 @@ func TestViewport(t *testing.T) {
 		return ast.WalkContinue, nil
 	})
 
-	out, viewports := Render(doc, Options{Src: src, Dir: dir, TermW: 80, TermH: 40, RunCache: map[ast.Node]string{}, Scrolls: map[ast.Node]int{node: 50}})
+	out, viewports := Render(doc, Options{Src: src, Dir: dir, TermW: 80, TermH: 40, Scrolls: map[ast.Node]int{node: 50}})
 	if len(viewports) != 1 {
 		t.Fatalf("got %d viewports, want 1", len(viewports))
 	}
@@ -173,7 +164,7 @@ func TestViewport(t *testing.T) {
 	if !strings.Contains(rows[v.Row+1], " 51│ line 51") || !strings.Contains(rows[v.Row+20], " 70│ line 70") {
 		t.Errorf("viewport doesn't show lines 51-70:\n%s", ansi.Strip(out))
 	}
-	top, _ := Render(doc, Options{Src: src, Dir: dir, TermW: 80, TermH: 40, RunCache: map[ast.Node]string{}, Scrolls: map[ast.Node]int{}})
+	top, _ := Render(doc, Options{Src: src, Dir: dir, TermW: 80, TermH: 40, Scrolls: map[ast.Node]int{}})
 	if MaxWidth(top) != MaxWidth(out) {
 		t.Errorf("viewport width changed when scrolled: %d at the top, %d scrolled", MaxWidth(top), MaxWidth(out))
 	}
