@@ -12,17 +12,17 @@ You can see the slide number in the bottom left corner.
 
 Slides are separated by three or more dashes on a line: `---`
 
-To advance to the next slide, press **Right** or **Space** or **J**.
+To advance to the next slide, press **Right** or **Space** or **L**.
 
 ---------------------------------------------------------
 
 # Slide Navigation
 
-You can go back a slide by pressing **Left** or **Backspace** or **K**.
+You can go back a slide by pressing **Left** or **Backspace** or **H**.
 
-You can go to the *first* slide by pressing **Home** or **H**.
+You can go to the *first* slide by pressing **Home** or **G**.
 
-You can go to the *last* slide by pressing **End** or **L**.
+You can go to the *last* slide by pressing **End** or **Shift-G**.
 
 You can also type in a slide number and hit **Enter** to go to that slide.
 
@@ -115,7 +115,7 @@ terminal renders emojis and what font you use)
 
 You can embed files with the syntax `![title](./file.txt)`:
 
-You can scroll up/down with **Up**/**Down**, the **mouse wheel**, or **Ctrl-U**/**Ctrl-D**.
+You can scroll up/down with **Up**/**Down** (or **K**/**J**), the **mouse wheel**, or **Ctrl-U**/**Ctrl-D**.
 
 ![Tale of Genji](genji.txt)
 

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -55,5 +56,36 @@ func TestKittyDetection(t *testing.T) {
 	m.Update(queryTimeoutMsg{})
 	if m.kitty != nil || len(m.lines) <= 1 {
 		t.Errorf("slide wasn't drawn without kitty graphics after the query timed out")
+	}
+}
+
+func TestKeys(t *testing.T) {
+	long := "# Long\n\n" + strings.Repeat("line\n\n", 40)
+	m := New([]deck.Slide{{Filename: "a.md", Text: long}, {Filename: "a.md", Text: "two"}, {Filename: "a.md", Text: "three"}}).(*model)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m.Update(queryTimeoutMsg{})
+	press := func(key string) {
+		code, text := []rune(key)[0], key
+		m.Update(tea.KeyPressMsg{Code: code, Text: text})
+	}
+	press("j")
+	press("j")
+	press("k")
+	if m.index != 0 || m.scroll != 1 {
+		t.Errorf("j j k: slide %d scrolled %d, want slide 0 scrolled 1", m.index, m.scroll)
+	}
+	press("l")
+	press("l")
+	press("h")
+	if m.index != 1 {
+		t.Errorf("l l h: slide %d, want 1", m.index)
+	}
+	press("G")
+	if m.index != 2 {
+		t.Errorf("G: slide %d, want 2", m.index)
+	}
+	press("g")
+	if m.index != 0 {
+		t.Errorf("g: slide %d, want 0", m.index)
 	}
 }

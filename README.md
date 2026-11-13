@@ -33,12 +33,12 @@ file passed on the command line is shown as a single syntax-highlighted slide.
 
 | Key                              | Action                                 |
 |----------------------------------|----------------------------------------|
-| Right, Space, j                  | Next slide                             |
-| Left, Backspace, k               | Previous slide                         |
-| Home, h / End, l                 | First / last slide                     |
+| Right, Space, l                  | Next slide                             |
+| Left, Backspace, h               | Previous slide                         |
+| Home, g / End, G                 | First / last slide                     |
 | 0-9 then Enter                   | Go to slide number                     |
 | / then Enter, n, p               | Search, next/previous match            |
-| Up, Down, mouse wheel            | Scroll                                 |
+| Up/k, Down/j, mouse wheel        | Scroll                                 |
 | Ctrl-U, Ctrl-D, PgUp, PgDn       | Scroll by 10 lines                     |
 | Tab, Shift-Tab                   | Cycle the focused demo, link, or image |
 | Enter                            | Run/open the focused item              |

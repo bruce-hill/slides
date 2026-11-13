@@ -365,17 +365,17 @@ func (m *model) update(msg tea.Msg) tea.Cmd {
 		switch key := msg.String(); key {
 		case "q", "ctrl+c":
 			return m.quit()
-		case "left", "k", "backspace":
+		case "left", "h", "backspace":
 			m.loadSlide(m.index - 1)
-		case "right", "j", "space":
+		case "right", "l", "space":
 			m.loadSlide(m.index + 1)
-		case "home", "h":
+		case "home", "g":
 			m.loadSlide(0)
-		case "end", "l":
+		case "end", "G":
 			m.loadSlide(len(m.slides) - 1)
-		case "up":
+		case "up", "k":
 			m.setScroll(m.scroll - 1)
-		case "down":
+		case "down", "j":
 			m.setScroll(m.scroll + 1)
 		case "ctrl+u", "pgup":
 			m.setScroll(m.scroll - 10)
