@@ -6,7 +6,7 @@ with [Bubble Tea](https://github.com/charmbracelet/bubbletea) and
 
 ## Running
 
-To run the slides program from this directory, run `go run ./cmd/slides sample.md`
+To run the slides program from this directory, run `go run ./cmd/slides examples/sample.md`
 
 Slides are separated by lines of three or more dashes (`---`). Any non-markdown
 file passed on the command line is shown as a single syntax-highlighted slide.
@@ -80,4 +80,5 @@ internal/render/     Rendering markdown (and images) as terminal text
 internal/term/       Shells running in virtual terminals, for demos
 internal/highlight/  Syntax highlighting, with Tomo, Nomsu and BP lexers (lexers/*.xml)
 internal/ui/         The Bubble Tea presenter (keys, scrolling, status bar)
+examples/            A sample presentation
 ```
