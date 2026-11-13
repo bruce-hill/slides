@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"strings"
+	"sync"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
@@ -76,6 +77,15 @@ func sgr(e chroma.StyleEntry) string {
 	return "\x1b[" + strings.Join(codes, ";") + "m"
 }
 
+type cacheKey struct{ lexer, code string }
+
+// Slides are redrawn many times a second while a demo's terminal is
+// changing, so the code on them is only highlighted once.
+var (
+	cacheMu sync.Mutex
+	cache   = map[cacheKey]string{}
+)
+
 // Highlight syntax highlights code. Styles never span across lines, so each
 // line of output can be displayed independently.
 func Highlight(code string, lexer chroma.Lexer) string {
@@ -83,6 +93,20 @@ func Highlight(code string, lexer chroma.Lexer) string {
 	if lexer == nil {
 		return code
 	}
+	key := cacheKey{lexer.Config().Name, code}
+	cacheMu.Lock()
+	out, ok := cache[key]
+	cacheMu.Unlock()
+	if !ok {
+		out = highlight(code, lexer)
+		cacheMu.Lock()
+		cache[key] = out
+		cacheMu.Unlock()
+	}
+	return out
+}
+
+func highlight(code string, lexer chroma.Lexer) string {
 	it, err := chroma.Coalesce(lexer).Tokenise(nil, code)
 	if err != nil {
 		return code
