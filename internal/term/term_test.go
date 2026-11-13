@@ -38,6 +38,7 @@ func TestTerm(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("DEMO_VAR", "from the environment")
 	t.Setenv("HISTFILE", "/dev/null")
+	t.Setenv("SHELL", "bash")
 	bashrc := "alias greet='echo hello from bashrc'\nPS1='fancy prompt$ '\nPROMPT_COMMAND='echo fancy'\n"
 	if err := os.WriteFile(filepath.Join(home, ".bashrc"), []byte(bashrc), 0o644); err != nil {
 		t.Fatal(err)
@@ -61,8 +62,8 @@ func TestTerm(t *testing.T) {
 	}
 	term.SendKey(uv.KeyPressEvent{Code: uv.KeyEnter})
 	screen = waitFor(t, term, changed, "\ntwo\nhello from bashrc\nfrom the environment\n>")
-	if strings.Contains(screen, "fancy") {
-		t.Errorf("the user's prompt was used:\n%s", screen)
+	if strings.Contains(screen, "fancy") || strings.Contains(screen, "PS1") {
+		t.Errorf("the user's prompt, or the command that replaced it, is showing:\n%s", screen)
 	}
 
 	for _, line := range term.Lines(true) {

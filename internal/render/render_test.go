@@ -65,6 +65,7 @@ func TestTable(t *testing.T) {
 
 func TestTerminal(t *testing.T) {
 	t.Setenv("HOME", t.TempDir()) // Without the user's .bashrc
+	t.Setenv("SHELL", "bash")
 	src := []byte("# Title\n\n```demo height=5\necho hi\n```\n")
 	doc := Parse(src)
 	n := Focusables(doc, src)[0]

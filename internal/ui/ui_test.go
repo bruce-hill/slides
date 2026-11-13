@@ -93,6 +93,7 @@ func TestKeys(t *testing.T) {
 
 func TestTyping(t *testing.T) {
 	t.Setenv("HOME", t.TempDir()) // Without the user's .bashrc
+	t.Setenv("SHELL", "bash")
 	m := New([]deck.Slide{{Filename: "a.md", Text: "```demo\necho hi\n```"}, {Filename: "a.md", Text: "two"}}).(*model)
 	defer m.quit()
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
@@ -124,6 +125,7 @@ func TestTyping(t *testing.T) {
 
 func TestZoom(t *testing.T) {
 	t.Setenv("HOME", t.TempDir()) // Without the user's .bashrc
+	t.Setenv("SHELL", "bash")
 	m := New([]deck.Slide{{Filename: "a.md", Text: "# Title\n\n```demo height=5\necho hi\n```"}}).(*model)
 	defer m.quit()
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})

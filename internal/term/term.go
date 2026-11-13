@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -23,58 +25,62 @@ type Term struct {
 	pty    *os.File
 	cmd    *exec.Cmd
 	exited bool
-	pasted bool
+	setUp  bool // Whether the prompt has been set
+	pasted bool // Whether the input has been pasted, after which the screen is shown
 }
 
-// rcfile loads the user's bash configuration, but replaces their prompt with
-// a bold green ">", so demos don't show a big complicated prompt.
-const rcfile = `
-[ -f /etc/bash.bashrc ] && . /etc/bash.bashrc
-[ -f ~/.bashrc ] && . ~/.bashrc
-unset PROMPT_COMMAND
-PS1='\[\e[1;32m\]>\[\e[m\] '
-PS2=
-exec 3<&-
-`
+// promptSetup is a command for each shell that replaces the user's prompt
+// with a bold green ">", so demos don't show a big complicated prompt, then
+// clears the screen. The leading space keeps it out of the history.
+var promptSetup = map[string]string{
+	"bash": ` PS1='\[\e[1;32m\]>\[\e[m\] ' PS2=; unset PROMPT_COMMAND; printf '\e[H\e[2J\e[3J'`,
+	"zsh":  ` PROMPT='%B%F{green}>%f%b ' RPROMPT= PROMPT2=; precmd_functions=(); printf '\e[H\e[2J\e[3J'`,
+	"fish": ` function fish_prompt; set_color -o green; echo -n '> '; set_color normal; end; function fish_right_prompt; end; printf '\e[H\e[2J\e[3J'`,
+}
 
-// Start starts a shell in dir in a cols x rows terminal, with input typed at
-// its prompt but not run. notify is called from another goroutine whenever
-// the screen changes.
+// Start starts the user's shell in dir in a cols x rows terminal, with input
+// typed at its prompt but not run. notify is called from another goroutine
+// whenever the screen changes.
 func Start(dir, input string, cols, rows int, notify func()) (*Term, error) {
-	// The rcfile is read from a pipe, which bash gets as file descriptor 3
-	rc, w, err := os.Pipe()
-	if err != nil {
-		return nil, err
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "bash"
 	}
-	defer rc.Close()
-	go func() {
-		io.WriteString(w, rcfile)
-		w.Close()
-	}()
-	cmd := exec.Command("bash", "--rcfile", "/dev/fd/3")
+	cmd := exec.Command(shell)
 	cmd.Dir = dir
 	cmd.Env = env()
-	cmd.ExtraFiles = []*os.File{rc}
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
 	if err != nil {
-		w.Close()
 		return nil, err
 	}
 
 	t := &Term{emu: vt.NewEmulator(cols, rows), pty: f, cmd: cmd}
+	setup, ok := promptSetup[filepath.Base(shell)]
+	t.setUp = !ok
 	input = strings.TrimRight(input, "\n")
-	// Pasting the input once the shell is ready for it lets multiple lines
-	// be typed without running each one
+	// Shells turn on bracketed paste when they're ready for input at each
+	// prompt. At the first one, the prompt is set up, and at the next one,
+	// the input is pasted, which lets multiple lines be typed without
+	// running each one.
 	t.emu.SetCallbacks(vt.Callbacks{EnableMode: func(mode ansi.Mode) {
-		if mode == ansi.ModeBracketedPaste && !t.pasted {
+		switch {
+		case mode != ansi.ModeBracketedPaste || t.pasted:
+		case !t.setUp:
+			t.setUp = true
+			t.emu.SendText(setup + "\r")
+		default:
 			t.pasted = true
 			t.emu.Paste(input)
 		}
 	}})
-	// Shells without bracketed paste just get the input typed in
+	// Shells without bracketed paste just get everything typed in
 	time.AfterFunc(3*time.Second, func() {
 		t.mu.Lock()
 		defer t.mu.Unlock()
+		if !t.setUp {
+			t.setUp = true
+			t.emu.SendText(setup + "\r")
+		}
 		if !t.pasted {
 			t.pasted = true
 			t.emu.SendText(input)
@@ -167,6 +173,10 @@ func (t *Term) Lines(showCursor bool) []string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	cols := t.emu.Width()
+	if !t.pasted {
+		// Hide the user's prompt until it's been replaced
+		return slices.Repeat([]string{strings.Repeat(" ", cols)}, t.emu.Height())
+	}
 	lines := strings.Split(t.emu.Render(), "\n")
 	for i, line := range lines {
 		if w := ansi.StringWidth(line); w < cols {
