@@ -34,6 +34,21 @@ func TestRender(t *testing.T) {
 	}
 }
 
+func TestWrap(t *testing.T) {
+	long := strings.Repeat("word ", 30)
+	src := []byte("# " + long + "\n\n" + long + "\n\n- " + long + "\n  - " + long + "\n")
+	out, _ := Render(Parse(src), Options{Src: src, TermW: 40, TermH: 24, RunCache: map[ast.Node]string{}})
+	if w := MaxWidth(out); w > 36 {
+		t.Errorf("text is %d columns wide, which doesn't fit in a 40 column terminal with margins:\n%s", w, ansi.Strip(out))
+	}
+	plain := ansi.Strip(out)
+	for _, want := range []string{"\n word word", "\nword word", "\n  ◆ word", "\n    word", "\n      ◆ word", "\n        word"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("wrapped text is missing %q:\n%s", want, plain)
+		}
+	}
+}
+
 func TestTable(t *testing.T) {
 	src := []byte("| Name | Count |\n|------|------:|\n| *apples* | 3 |\n| pears | 12 |\n")
 	out, _ := Render(Parse(src), Options{Src: src, TermW: 80, TermH: 24, RunCache: map[ast.Node]string{}})

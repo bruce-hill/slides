@@ -82,7 +82,8 @@ type Viewport struct {
 
 type renderer struct {
 	Options
-	width int // Width that headings and boxes expand to fill
+	width    int // Width that headings and boxes expand to fill
+	maxWidth int // Width that text wraps at, which is narrower inside lists
 
 	measuring bool // Whether images are being left out to measure the other content
 	numImages int  // Number of images found while measuring
@@ -99,7 +100,7 @@ func (r *renderer) resolve(path string) string {
 
 func (r *renderer) heading(title string, color color.Color) string {
 	style := lipgloss.NewStyle().Bold(true).Reverse(true).Align(lipgloss.Center).
-		Width(max(r.width, ansi.StringWidth(title)))
+		Width(max(r.width, MaxWidth(title)))
 	if color != nil {
 		style = style.Foreground(color)
 	}
@@ -157,7 +158,8 @@ func CodeText(n ast.Node, src []byte) string {
 func (r *renderer) block(n ast.Node) string {
 	switch n := n.(type) {
 	case *ast.Heading:
-		title := r.heading(" "+r.inlines(n)+" ", nil)
+		text := lipgloss.Wrap(r.inlines(n), r.maxWidth-2, "")
+		title := r.heading(" "+strings.ReplaceAll(text, "\n", " \n ")+" ", nil)
 		if n.Level == 1 {
 			bar := r.heading("", nil)
 			return bar + "\n" + title + "\n" + bar
@@ -165,6 +167,9 @@ func (r *renderer) block(n ast.Node) string {
 		return title
 	case *ast.Paragraph, *ast.TextBlock:
 		out := strings.TrimSpace(r.inlines(n))
+		if !hasImage(n) {
+			out = lipgloss.Wrap(out, r.maxWidth, "")
+		}
 		// Center images that are on their own, not counting the focus marker after them
 		if img, ok := n.FirstChild().(*ast.Image); ok && img == n.LastChild() && isImage(string(img.Destination)) {
 			indent := strings.Repeat(" ", max(0, (r.width-(MaxWidth(out)-1))/2))
@@ -176,6 +181,8 @@ func (r *renderer) block(n ast.Node) string {
 		if n.IsTight {
 			sep = "\n"
 		}
+		r.maxWidth -= 4 // Room for the bullets
+		defer func() { r.maxWidth += 4 }()
 		var items []string
 		num := n.Start
 		for c := n.FirstChild(); c != nil; c = c.NextSibling() {
@@ -232,7 +239,7 @@ func (r *renderer) table(n *east.Table) string {
 			rows = append(rows, cells)
 		}
 	}
-	return table.New().Headers(header...).Rows(rows...).
+	t := table.New().Headers(header...).Rows(rows...).
 		Border(lipgloss.RoundedBorder()).BorderStyle(lipgloss.NewStyle().Foreground(blue)).
 		StyleFunc(func(row, col int) lipgloss.Style {
 			style := lipgloss.NewStyle().Padding(0, 1)
@@ -248,7 +255,11 @@ func (r *renderer) table(n *east.Table) string {
 				}
 			}
 			return style
-		}).String()
+		})
+	if MaxWidth(t.String()) > r.maxWidth {
+		t = t.Width(r.maxWidth) // Wrap the cells
+	}
+	return t.String()
 }
 
 func (r *renderer) inlines(n ast.Node) string {
@@ -305,6 +316,17 @@ func (r *renderer) link(url, title string, n ast.Node) string {
 		style = "1;4;34"
 	}
 	return ansi.SetHyperlink(url) + wrap(style, "22;24;39", title) + ansi.ResetHyperlink()
+}
+
+// hasImage reports whether a paragraph has an image or embedded file, which
+// shouldn't be wrapped like text.
+func hasImage(n ast.Node) bool {
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		if _, ok := c.(*ast.Image); ok {
+			return true
+		}
+	}
+	return false
 }
 
 func plainText(n ast.Node, src []byte) string {
@@ -459,7 +481,8 @@ func (r *renderer) run(n ast.Node, code string) string {
 // Render renders a document, sizing headings and boxes to match the widest
 // element on the slide. It also returns the slide's scrollable viewports.
 func Render(doc ast.Node, opts Options) (string, []Viewport) {
-	r := &renderer{Options: opts}
+	// Leave a margin on each side
+	r := &renderer{Options: opts, maxWidth: max(20, opts.TermW-4)}
 	if r.ImageCache == nil {
 		r.ImageCache = map[string]image.Image{}
 	}
