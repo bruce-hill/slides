@@ -227,7 +227,7 @@ func (r *renderer) block(n ast.Node) string {
 			out = lipgloss.Wrap(out, r.maxWidth, "")
 		}
 		// Center images that are on their own, not counting the focus marker after them
-		if img, ok := n.FirstChild().(*ast.Image); ok && img == n.LastChild() && isImage(string(img.Destination)) {
+		if aloneImage(n) {
 			indent := strings.Repeat(" ", max(0, (r.width-(MaxWidth(out)-1))/2))
 			out = indent + strings.ReplaceAll(out, "\n", "\n"+indent)
 		}
@@ -379,6 +379,15 @@ func (r *renderer) link(url, title string, n ast.Node) string {
 
 // hasImage reports whether a paragraph has an image or embedded file, which
 // shouldn't be wrapped like text.
+// aloneImage reports whether a block is a paragraph with only an image in it.
+func aloneImage(n ast.Node) bool {
+	if _, ok := n.(*ast.Paragraph); !ok {
+		return false
+	}
+	img, ok := n.FirstChild().(*ast.Image)
+	return ok && img == n.LastChild() && isImage(string(img.Destination))
+}
+
 func hasImage(n ast.Node) bool {
 	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
 		if _, ok := c.(*ast.Image); ok {
@@ -623,6 +632,41 @@ func TermSizes(doc ast.Node, opts Options) map[ast.Node]image.Point {
 	return sizes
 }
 
+// runs splits a document's blocks (other than its title) into images that
+// are on their own and runs of the blocks between them.
+func (r *renderer) runs(doc ast.Node) [][]ast.Node {
+	var runs [][]ast.Node
+	for c := doc.FirstChild(); c != nil; c = c.NextSibling() {
+		if c == r.title {
+			continue
+		}
+		if len(runs) == 0 || aloneImage(c) || aloneImage(runs[len(runs)-1][0]) {
+			runs = append(runs, nil)
+		}
+		runs[len(runs)-1] = append(runs[len(runs)-1], c)
+	}
+	return runs
+}
+
+// renderRuns renders runs of blocks, stretching the headings and boxes in
+// each run to the given width.
+func (r *renderer) renderRuns(runs [][]ast.Node, widths []int) []string {
+	out := make([]string, len(runs))
+	hidden := false
+	for i, run := range runs {
+		r.width = widths[i]
+		var parts []string
+		for _, c := range run {
+			hidden = hidden || r.unrevealed(c)
+			if s := r.block(c); s != "" {
+				parts = append(parts, r.blankIf(hidden, s))
+			}
+		}
+		out[i] = strings.Join(parts, "\n\n")
+	}
+	return out
+}
+
 // Render renders a document (except for its title, which is rendered by
 // RenderTitle), sizing headings and boxes to match the widest element on the
 // slide. It also returns the slide's scrollable viewports.
@@ -630,11 +674,35 @@ func TermSizes(doc ast.Node, opts Options) map[ast.Node]image.Point {
 // from TermSizes first.
 func Render(doc ast.Node, opts Options) (string, []Viewport) {
 	r := measure(doc, opts)
-	r.width = r.TermW / 4
-	r.width = MaxWidth(r.blocks(doc, "\n\n"))
+	runs := r.runs(doc)
+	widths := make([]int, len(runs))
+	for i, run := range runs {
+		if !aloneImage(run[0]) {
+			widths[i] = r.TermW / 4
+		}
+	}
+	total := 0
+	for i, s := range r.renderRuns(runs, widths) {
+		widths[i] = MaxWidth(s)
+		total = max(total, widths[i])
+	}
+	// Images are centered on the whole slide, and each run of other blocks
+	// is centered on its own, so text isn't aligned with a wide image.
+	for i, run := range runs {
+		if aloneImage(run[0]) {
+			widths[i] = total
+		}
+	}
 	r.viewports = nil
 	r.revealing = true
-	lines := strings.Split(r.blocks(doc, "\n\n"), "\n")
+	var parts []string
+	for i, s := range r.renderRuns(runs, widths) {
+		if s != "" {
+			indent := strings.Repeat(" ", (total-widths[i])/2)
+			parts = append(parts, indent+strings.ReplaceAll(s, "\n", "\n"+indent))
+		}
+	}
+	lines := strings.Split(strings.Join(parts, "\n\n"), "\n")
 
 	// Find where each viewport ended up, and remove its marker. Viewports
 	// that haven't been revealed don't have one.

@@ -180,6 +180,25 @@ func TestImageCentered(t *testing.T) {
 	}
 }
 
+func TestTextCenteredUnderWideImage(t *testing.T) {
+	dir := t.TempDir()
+	f, _ := os.Create(filepath.Join(dir, "wide.png"))
+	png.Encode(f, image.NewRGBA(image.Rect(0, 0, 100, 10)))
+	f.Close()
+
+	src := []byte("![width=80%](wide.png)\n\nShort\n\nA little longer\n")
+	out, _ := Render(Parse(src), Options{Src: src, Dir: dir, TermW: 100, TermH: 40})
+	lines := strings.Split(ansi.Strip(out), "\n")
+	short, longer := lines[len(lines)-3], lines[len(lines)-1]
+	indent := len(short) - len(strings.TrimLeft(short, " "))
+	if indent != len(longer)-len(strings.TrimLeft(longer, " ")) {
+		t.Errorf("text after an image isn't left-aligned with itself:\n%s\n%s", short, longer)
+	}
+	if left, right := indent, MaxWidth(out)-ansi.StringWidth(longer); left == 0 || left-right > 1 || right-left > 1 {
+		t.Errorf("text isn't centered under the image (%d columns left, %d right):\n%s", left, right, ansi.Strip(out))
+	}
+}
+
 func TestViewport(t *testing.T) {
 	dir := t.TempDir()
 	var lines []string
