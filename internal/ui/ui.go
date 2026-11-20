@@ -59,6 +59,7 @@ type model struct {
 	fileCache  map[string]string
 	imageCache map[string]image.Image
 	viewports  []render.Viewport
+	title      []string // Pinned to the top of the screen, above the lines
 	lines      []string
 	lineWidth  int
 	scroll     int
@@ -286,7 +287,7 @@ func (m *model) rerender() {
 	}
 	text := m.slides[m.index].Text
 	var out string
-	m.viewports = nil
+	m.title, m.viewports = nil, nil
 	if m.raw {
 		out = highlight.Highlight(text, highlight.LexerFor("markdown"))
 	} else if strings.TrimSpace(text) != "" {
@@ -302,6 +303,9 @@ func (m *model) rerender() {
 			}
 		}
 		out, m.viewports = render.Render(m.doc, opts)
+		if title := render.RenderTitle(m.doc, opts); title != "" {
+			m.title = strings.Split(title, "\n")
+		}
 	}
 	m.lines = strings.Split(out, "\n")
 	m.lineWidth = render.MaxWidth(out)
@@ -309,7 +313,17 @@ func (m *model) rerender() {
 }
 
 func (m *model) setScroll(scroll int) {
-	m.scroll = max(0, min(scroll, len(m.lines)-(m.height-1)))
+	_, top := m.bodyArea()
+	m.scroll = max(0, min(scroll, len(m.lines)-(m.height-1-top)))
+}
+
+// bodyArea returns the rows of the screen that the slide's text (other than
+// its title) is drawn between.
+func (m *model) bodyArea() (top, bottom int) {
+	if len(m.title) > 0 {
+		top = len(m.title) + 1 // With a blank line under the title
+	}
+	return top, m.height - 1 // The last row is the status bar
 }
 
 // offset returns where the slide's text is drawn on the screen.
@@ -317,8 +331,8 @@ func (m *model) offset() (x, y int) {
 	if m.raw {
 		return 0, -m.scroll
 	}
-	avail := m.height - 1 // The last row is the status bar
-	return max(0, (m.width-m.lineWidth)/2), max(0, (avail-len(m.lines))/2) - m.scroll
+	top, bottom := m.bodyArea()
+	return max(0, (m.width-m.lineWidth)/2), top + max(0, (bottom-top-len(m.lines))/2) - m.scroll
 }
 
 // viewportAt returns the viewport at a position on the screen, if any.
@@ -707,9 +721,15 @@ func (m *model) View() tea.View {
 		}
 	} else {
 		x, y := m.offset()
-		for i := range m.height - 1 {
+		top, bottom := m.bodyArea()
+		for i := top; i < bottom; i++ {
 			if j := i - y; j >= 0 && j < len(m.lines) {
 				rows[i] = strings.Repeat(" ", x) + ansi.Truncate(m.lines[j], m.width-x, "")
+			}
+		}
+		for i, line := range m.title {
+			if i < bottom {
+				rows[i] = ansi.Truncate(line, m.width, "")
 			}
 		}
 	}

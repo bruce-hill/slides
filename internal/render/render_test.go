@@ -25,27 +25,46 @@ func TestRender(t *testing.T) {
 	}
 	out, _ := Render(doc, Options{Src: src, TermW: 80, TermH: 24, Focused: focusables[1]})
 	plain := ansi.Strip(out)
-	for _, want := range []string{"Title", "Some text and a link.", "◆ one", "Demo", "$ echo hi"} {
+	for _, want := range []string{"Some text and a link.", "◆ one", "Demo", "$ echo hi"} {
 		if !strings.Contains(plain, want) {
 			t.Errorf("output is missing %q:\n%s", want, plain)
 		}
 	}
+	if strings.Contains(plain, "Title") {
+		t.Errorf("the title is drawn with the rest of the slide:\n%s", plain)
+	}
 	// Headings and boxes are stretched to the width of the widest element
-	lines := strings.Split(plain, "\n")
-	if w := ansi.StringWidth(lines[0]); w != MaxWidth(out) {
-		t.Errorf("heading width = %d, want %d", w, MaxWidth(out))
+	for _, line := range strings.Split(plain, "\n") {
+		if strings.Contains(line, "Demo") && ansi.StringWidth(line) != MaxWidth(out) {
+			t.Errorf("heading width = %d, want %d", ansi.StringWidth(line), MaxWidth(out))
+		}
+	}
+	// The title spans the whole terminal
+	title := RenderTitle(doc, Options{Src: src, TermW: 80, TermH: 24})
+	if !strings.Contains(ansi.Strip(title), "Title") {
+		t.Errorf("title is missing:\n%s", ansi.Strip(title))
+	}
+	for _, line := range strings.Split(title, "\n") {
+		if w := ansi.StringWidth(line); w != 80 {
+			t.Errorf("title width = %d, want 80", w)
+		}
 	}
 }
 
 func TestWrap(t *testing.T) {
 	long := strings.Repeat("word ", 30)
 	src := []byte("# " + long + "\n\n" + long + "\n\n- " + long + "\n  - " + long + "\n")
-	out, _ := Render(Parse(src), Options{Src: src, TermW: 40, TermH: 24})
+	doc := Parse(src)
+	out, _ := Render(doc, Options{Src: src, TermW: 40, TermH: 24})
 	if w := MaxWidth(out); w > 36 {
 		t.Errorf("text is %d columns wide, which doesn't fit in a 40 column terminal with margins:\n%s", w, ansi.Strip(out))
 	}
+	title := RenderTitle(doc, Options{Src: src, TermW: 40, TermH: 24})
+	if w := MaxWidth(title); w != 40 || strings.Count(title, "\n") < 4 {
+		t.Errorf("title isn't wrapped to the whole 40 column terminal:\n%s", ansi.Strip(title))
+	}
 	plain := ansi.Strip(out)
-	for _, want := range []string{"\n word word", "\nword word", "\n  ◆ word", "\n    word", "\n      ◆ word", "\n        word"} {
+	for _, want := range []string{"\nword word", "\n  ◆ word", "\n    word", "\n      ◆ word", "\n        word"} {
 		if !strings.Contains(plain, want) {
 			t.Errorf("wrapped text is missing %q:\n%s", want, plain)
 		}
@@ -151,13 +170,13 @@ func TestImageCentered(t *testing.T) {
 	png.Encode(f, image.NewRGBA(image.Rect(0, 0, 10, 10)))
 	f.Close()
 
-	src := []byte("# A title that is wider than the image\n\n![width=10%](small.png)\n")
+	src := []byte("## A heading that is wider than the image\n\n![width=10%](small.png)\n")
 	out, _ := Render(Parse(src), Options{Src: src, Dir: dir, TermW: 100, TermH: 40})
 	lines := strings.Split(ansi.Strip(out), "\n")
-	title, img := lines[1], lines[4]
+	title, img := lines[0], lines[2]
 	left, right := len(img)-len(strings.TrimLeft(img, " ")), MaxWidth(title)-ansi.StringWidth(strings.TrimRight(img, " "))
 	if left == 0 || left-right > 1 || right-left > 1 {
-		t.Errorf("image isn't centered under the title (%d columns left, %d right):\n%s\n%s", left, right, title, img)
+		t.Errorf("image isn't centered under the heading (%d columns left, %d right):\n%s\n%s", left, right, title, img)
 	}
 }
 

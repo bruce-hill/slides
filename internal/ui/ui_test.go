@@ -25,7 +25,7 @@ func TestKittyDetection(t *testing.T) {
 	t.Setenv("TERM_PROGRAM", "")
 	t.Setenv("KONSOLE_VERSION", "")
 	m := newModel(t, "# Title")
-	if len(m.lines) > 1 {
+	if len(m.title) > 0 {
 		t.Errorf("slide was drawn before the terminal answered the kitty graphics query")
 	}
 	m.Update(uv.KittyGraphicsEvent{Options: kitty.Options{ID: render.KittyQueryID}, Payload: []byte("OK")})
@@ -33,7 +33,7 @@ func TestKittyDetection(t *testing.T) {
 	if m.kitty == nil {
 		t.Errorf("kitty graphics weren't used after the terminal said it supports them")
 	}
-	if len(m.lines) <= 1 {
+	if len(m.title) == 0 {
 		t.Errorf("slide wasn't drawn after the terminal answered")
 	}
 
@@ -56,7 +56,7 @@ func TestKittyDetection(t *testing.T) {
 	// Terminals that never answer
 	m = newModel(t, "# Title")
 	m.Update(queryTimeoutMsg{})
-	if m.kitty != nil || len(m.lines) <= 1 {
+	if m.kitty != nil || len(m.title) == 0 {
 		t.Errorf("slide wasn't drawn without kitty graphics after the query timed out")
 	}
 }

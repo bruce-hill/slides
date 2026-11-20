@@ -94,6 +94,7 @@ type renderer struct {
 	numImages int // Number of images and terminals found while measuring
 	imageRows int // Maximum height of each image or terminal
 	viewports []Viewport
+	title     ast.Node // The slide's title, which is drawn separately by RenderTitle
 }
 
 func (r *renderer) resolve(path string) string {
@@ -143,6 +144,9 @@ func (r *renderer) blocks(n ast.Node, sep string) string {
 	var parts []string
 	hidden := false
 	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		if c == r.title {
+			continue
+		}
 		hidden = hidden || r.unrevealed(c)
 		if s := r.block(c); s != "" {
 			parts = append(parts, r.blankIf(hidden, s))
@@ -561,17 +565,42 @@ func (r *renderer) terminal(n *ast.FencedCodeBlock, t *term.Term) string {
 
 // measure makes a renderer for a document, with the height left over by the
 // rest of the slide split between its images and terminals.
+// Title returns the heading that a slide starts with, if it's a top-level one.
+func Title(doc ast.Node) *ast.Heading {
+	if h, ok := doc.FirstChild().(*ast.Heading); ok && h.Level == 1 {
+		return h
+	}
+	return nil
+}
+
+// RenderTitle renders a slide's title across the whole width of the
+// terminal, or returns "" if it doesn't have one.
+func RenderTitle(doc ast.Node, opts Options) string {
+	h := Title(doc)
+	if h == nil {
+		return ""
+	}
+	r := &renderer{Options: opts, width: opts.TermW, maxWidth: max(20, opts.TermW-4)}
+	return r.block(h)
+}
+
 func measure(doc ast.Node, opts Options) *renderer {
 	// Leave a margin on each side
 	r := &renderer{Options: opts, maxWidth: max(20, opts.TermW-4)}
 	if r.ImageCache == nil {
 		r.ImageCache = map[string]image.Image{}
 	}
+	if h := Title(doc); h != nil {
+		r.title = h
+	}
 
 	// Measure everything except images, then split the remaining height
-	// (minus the status bar and a margin) between the images.
+	// (minus the status bar, the title, and a margin) between the images.
 	r.measuring = true
 	other := strings.Count(r.blocks(doc, "\n\n"), "\n") + 1 - r.numImages
+	if title := RenderTitle(doc, opts); title != "" {
+		other += strings.Count(title, "\n") + 2
+	}
 	r.measuring = false
 	if r.numImages > 0 {
 		r.imageRows = max(8, (r.TermH-1-2-other)/r.numImages)
@@ -594,8 +623,9 @@ func TermSizes(doc ast.Node, opts Options) map[ast.Node]image.Point {
 	return sizes
 }
 
-// Render renders a document, sizing headings and boxes to match the widest
-// element on the slide. It also returns the slide's scrollable viewports.
+// Render renders a document (except for its title, which is rendered by
+// RenderTitle), sizing headings and boxes to match the widest element on the
+// slide. It also returns the slide's scrollable viewports.
 // Demos' terminals are drawn at their current size, which should be set
 // from TermSizes first.
 func Render(doc ast.Node, opts Options) (string, []Viewport) {
